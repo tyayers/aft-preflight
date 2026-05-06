@@ -1,0 +1,25 @@
+name: llm
+displayName: ""
+type: proxy
+categories: []
+description: API proxy for HelloWorld-v1
+parameters: []
+endpoints:
+  - name: llm
+    basePath: /llm
+    routes:
+      - name: default
+        target: llm
+    flows: []
+    faultRules: []
+targets:
+  - name: llm
+    url: https://aiplatform.googleapis.com
+    flows: []
+    faultRules: []
+    httpTargetConnection:
+      properties: {}
+      url: https://aiplatform.googleapis.com
+policies: []
+resources: []
+tests: []

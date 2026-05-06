@@ -1,6 +1,6 @@
 import { Http } from "../utilities/http";
 
-export async function apigeemock_apigeemockProxy(req: Request): Promise<Response> {
+export async function apigee_mockProxy(req: Request): Promise<Response> {
   const path = Http.getPath(req.url);
 
   const response = await fetch(

@@ -12,11 +12,11 @@ parameters:
       - Hello mars!
       - Hello internet!
 endpoints:
-  - name: apigeemock-apigeemock
+  - name: apigee-mock
     basePath: /apigeemock
     routes:
       - name: default
-        target: apigeemock-apigeemock
+        target: apigee-mock
     flows:
       - name: PostFlow
         mode: Response
@@ -24,7 +24,7 @@ endpoints:
           - name: helloworld-JS-AddHelloWorld
     faultRules: []
 targets:
-  - name: apigeemock-apigeemock
+  - name: apigee-mock
     url: https://mocktarget.apigee.net
     flows: []
     faultRules: []

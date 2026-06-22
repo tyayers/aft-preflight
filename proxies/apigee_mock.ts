@@ -1,7 +1,72 @@
 import { Http } from "../utilities/http";
 
+
+function policy_helloworld_JS_AddHelloWorld(request: any, response: any, context: any) {
+  const print = console.log;
+  var responseText = response.content;
+if (!responseText) responseText = "";
+
+var responseObject = undefined;
+
+try {
+  responseObject = JSON.parse(responseText);
+} catch(e) {
+  print("Could not parse JSON.");
+}
+
+var message = context.getVariable("request.queryparam.message");
+if (!message)
+  message = context.getVariable("propertyset.helloworld-helloworld.MESSAGE");
+if (!message)
+  message = "Hello world!";
+
+if (responseObject) {
+  responseObject["message"] = message;
+  context.setVariable("response.content", JSON.stringify(responseObject));
+} else {
+  responseText = responseText + " " + message;
+  context.setVariable("response.content", responseText);
+}
+}
+
+
 export async function apigee_mockProxy(req: Request): Promise<Response> {
   const path = Http.getPath(req.url);
+  const url = new URL(req.url);
+
+  const proxyRequest = {
+    content: "", // Request body if needed
+    headers: Object.fromEntries(req.headers.entries()),
+  };
+  const proxyResponse = {
+    content: "",
+    status: 200,
+  };
+
+  // Initialize context with some basic variables
+  const context = {
+    variables: {} as Record<string, any>,
+    getVariable(name: string) {
+      if (name === "response.content") return proxyResponse.content;
+      if (name.startsWith("request.queryparam.")) {
+        return url.searchParams.get(name.split(".").pop()!);
+      }
+      return this.variables[name];
+    },
+    setVariable(name: string, value: any) {
+      if (name === "response.content") {
+        proxyResponse.content = value;
+      } else {
+        this.variables[name] = value;
+      }
+    }
+  };
+
+  // Populate propertyset from resources if available
+  context.setVariable("propertyset.helloworld.helloworld.MESSAGE", "Hello world!");
+
+  // 1. Run Request Policies
+
 
   const response = await fetch(
     "https://mocktarget.apigee.net" + "/" + path,
@@ -19,8 +84,14 @@ export async function apigee_mockProxy(req: Request): Promise<Response> {
       if (response && response.body) {
         for await (const chunk of response.body) {
           let chunkString = Buffer.from(chunk).toString("utf-8");
-          console.log("Chunk received: " + chunkString);
-          yield chunkString;
+
+          // 2. Run Response Policies on each chunk
+          proxyResponse.content = chunkString;
+          proxyResponse.status = response.status;
+
+  policy_helloworld_JS_AddHelloWorld(proxyRequest, proxyResponse, context);
+
+          yield proxyResponse.content;
         }
       }
     },

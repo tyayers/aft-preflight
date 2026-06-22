@@ -1,15 +1,12 @@
-# svaant-gateway
-
-To install dependencies:
+# bungee-emulator
 
 ```bash
+# install dependencies
 bun install
-```
 
-To run:
+# build proxies from templates dir
+bun run build.ts
 
-```bash
+# start proxies
 bun run index.ts
 ```
-
-This project was created using `bun init` in bun v1.3.13. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

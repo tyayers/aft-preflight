@@ -20,10 +20,15 @@ let indexImports = "";
 let indexRoutes = "";
 
 // 3. Process each yaml file in templates
-const templates = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml"));
+const templates = fs
+  .readdirSync(TEMPLATES_DIR)
+  .filter((f) => f.endsWith(".yaml"));
 
 for (const templateFile of templates) {
-  const content = fs.readFileSync(path.join(TEMPLATES_DIR, templateFile), "utf8");
+  const content = fs.readFileSync(
+    path.join(TEMPLATES_DIR, templateFile),
+    "utf8",
+  );
   const data = yaml.load(content) as any;
 
   if (!data || !data.endpoints) continue;
@@ -36,16 +41,130 @@ for (const templateFile of templates) {
 
     if (!targetUrl) continue;
 
-    // Use endpoint name for the proxy function and file
     const sanitizedName = endpoint.name.replace(/[^a-zA-Z0-9]/g, "_");
     const fileName = `${sanitizedName}.ts`;
     const functionName = `${sanitizedName}Proxy`;
 
-    // Generate proxy handler file content based on the pattern in proxies/llm.ts
+    // Collect all policy steps for this endpoint/target chain
+    const requestSteps: string[] = [];
+    const responseSteps: string[] = [];
+
+    const processFlows = (flows: any[]) => {
+      if (!flows) return;
+      for (const flow of flows) {
+        if (flow.mode === "Request") {
+          flow.steps?.forEach((s: any) => requestSteps.push(s.name));
+        } else if (flow.mode === "Response") {
+          flow.steps?.forEach((s: any) => responseSteps.push(s.name));
+        }
+      }
+    };
+
+    processFlows(endpoint.flows);
+    processFlows(target?.flows);
+
+    // Generate policy sub-functions
+    let policyFunctions = "";
+    const uniquePolicyNames = Array.from(
+      new Set([...requestSteps, ...responseSteps]),
+    );
+
+    for (const policyName of uniquePolicyNames) {
+      const policy = data.policies?.find((p: any) => p.name === policyName);
+      if (!policy) continue;
+
+      let policyCode = "";
+      if (policy.type === "Javascript") {
+        const js = policy.content.javascript;
+        if (js.source) {
+          policyCode = js.source;
+        } else if (js.resourceUrl) {
+          const resourceName = js.resourceUrl.replace("jsc://", "");
+          const resource = data.resources?.find(
+            (r: any) => r.name === resourceName,
+          );
+          policyCode = resource?.content || "";
+        }
+      }
+
+      const policyFunctionName = `policy_${policyName.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      policyFunctions += `
+function ${policyFunctionName}(request: any, response: any, context: any) {
+  const print = console.log;
+  ${policyCode}
+}
+`;
+    }
+
+    // Helper to map policy names to function calls
+    const generatePolicyCalls = (stepNames: string[]) => {
+      return stepNames
+        .map(
+          (name) =>
+            `  policy_${name.replace(/[^a-zA-Z0-9]/g, "_")}(proxyRequest, proxyResponse, context);`,
+        )
+        .join("\n");
+    };
+
+    const requestPolicyCalls = generatePolicyCalls(requestSteps);
+    const responsePolicyCalls = generatePolicyCalls(responseSteps);
+
+    // Generate proxy handler file content
     const proxyContent = `import { Http } from "../utilities/http";
+
+${policyFunctions}
 
 export async function ${functionName}(req: Request): Promise<Response> {
   const path = Http.getPath(req.url);
+  const url = new URL(req.url);
+
+  const proxyRequest = {
+    content: "", // Request body if needed
+    headers: Object.fromEntries(req.headers.entries()),
+  };
+  const proxyResponse = {
+    content: "",
+    status: 200,
+  };
+
+  // Initialize context with some basic variables
+  const context = {
+    variables: {} as Record<string, any>,
+    getVariable(name: string) {
+      if (name === "response.content") return proxyResponse.content;
+      if (name.startsWith("request.queryparam.")) {
+        return url.searchParams.get(name.split(".").pop()!);
+      }
+      return this.variables[name];
+    },
+    setVariable(name: string, value: any) {
+      if (name === "response.content") {
+        proxyResponse.content = value;
+      } else {
+        this.variables[name] = value;
+      }
+    }
+  };
+
+  // Populate propertyset from resources if available
+  ${(data.resources || [])
+    .filter((r: any) => r.type === "properties")
+    .map((r: any) => {
+      const propLines = r.content
+        .split("\n")
+        .filter((l: string) => l.includes("="));
+      const prefix = r.name.replace(".properties", "").replace(/-/g, ".");
+      return propLines
+        .map((l: string) => {
+          const [k, v] = l.split("=");
+          return `context.setVariable("propertyset.${prefix}.${k ? k.trim() : ""}", "${v ? v.trim() : ""}");`;
+        })
+        .join("\n  ");
+    })
+    .join("\n  ")}
+
+  // 1. Run Request Policies
+${requestPolicyCalls}
 
   const response = await fetch(
     "${targetUrl}" + "/" + path,
@@ -63,8 +182,14 @@ export async function ${functionName}(req: Request): Promise<Response> {
       if (response && response.body) {
         for await (const chunk of response.body) {
           let chunkString = Buffer.from(chunk).toString("utf-8");
-          console.log("Chunk received: " + chunkString);
-          yield chunkString;
+
+          // 2. Run Response Policies on each chunk
+          proxyResponse.content = chunkString;
+          proxyResponse.status = response.status;
+
+${responsePolicyCalls}
+
+          yield proxyResponse.content;
         }
       }
     },

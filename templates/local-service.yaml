@@ -1,0 +1,72 @@
+name: local-service
+displayName: ""
+type: proxy
+categories: []
+description: API proxy for a local service
+parameters: []
+endpoints:
+  - name: local-service
+    basePath: /local-service
+    routes:
+      - name: default
+        target: local-service
+    flows:
+      - name: PostFlow
+        mode: Response
+        steps:
+          - name: helloworld-JS-AddHelloWorld
+    faultRules: []
+targets:
+  - name: local-service
+    url: http://localhost:8080
+    flows: []
+    faultRules: []
+    httpTargetConnection:
+      properties: {}
+      url: http://localhost:8080
+policies:
+  - name: helloworld-JS-AddHelloWorld
+    type: Javascript
+    content:
+      javascript:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          timeLimit: "200"
+          name: helloworld-JS-AddHelloWorld
+        displayName: JS-AddHelloWorld
+        properties: {}
+        resourceUrl: jsc://helloworld-hello-world.js
+resources:
+  - name: helloworld-hello-world.js
+    type: jsc
+    content: |-
+      var responseText = response.content;
+      if (!responseText) responseText = "";
+
+      var responseObject = undefined;
+
+      try {
+        responseObject = JSON.parse(responseText);
+      } catch(e) {
+        print("Could not parse JSON.");
+      }
+
+      var message = context.getVariable("request.queryparam.message");
+      if (!message)
+        message = context.getVariable("propertyset.helloworld-helloworld.MESSAGE");
+      if (!message)
+        message = "Hello world 4!";
+
+      if (responseObject) {
+        responseObject["message"] = message;
+        context.setVariable("response.content", JSON.stringify(responseObject));
+      } else {
+        responseText = responseText + " " + message;
+        context.setVariable("response.content", responseText);
+      }
+  - name: helloworld-helloworld.properties
+    type: properties
+    content: |
+      MESSAGE=Hello world!
+tests: []

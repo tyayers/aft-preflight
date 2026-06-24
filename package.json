@@ -1,5 +1,5 @@
 {
-  "name": "svaant-gateway",
+  "name": "ai-gateway",
   "module": "index.ts",
   "type": "module",
   "private": true,

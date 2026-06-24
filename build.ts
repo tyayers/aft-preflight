@@ -209,11 +209,117 @@ ${responsePolicyCalls}
 }
 
 // 4. Update index.ts
-const indexContent = `${indexImports}
+const indexContent = `import { spawn } from "node:child_process";
+import { TemplateManager } from "./utilities/TemplateManager";
+${indexImports}
 const server = Bun.serve({
-  port: 8080,
+  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 8080,
   routes: {
 ${indexRoutes}  },
+  async fetch(req) {
+    const url = new URL(req.url);
+    
+    // Add rebuild endpoint
+    if (url.pathname === "/rebuild" && req.method === "POST") {
+      console.log("Rebuild requested. Running build.ts...");
+      try {
+        const proc = Bun.spawn(["bun", "run", "build.ts"]);
+        const exitCode = await proc.exited;
+        
+        if (exitCode !== 0) {
+          const errorOutput = await new Response(proc.stderr).text();
+          console.error("Build failed:", errorOutput);
+          return Response.json({ success: false, error: errorOutput }, { status: 500 });
+        }
+
+        console.log("Build complete! Restarting service...");
+        
+        // Stop the server to free up the port
+        server.stop();
+        
+        // Spawn a detached process running the same service
+        const child = spawn(process.argv[0], process.argv.slice(1), {
+          detached: true,
+          stdio: "inherit",
+        });
+        child.unref();
+
+        // Exit the current process after a short delay
+        setTimeout(() => {
+          console.log("Old process exiting...");
+          process.exit(0);
+        }, 100);
+
+        return Response.json({ success: true, message: "Build successful. Service restarted!" });
+      } catch (err: any) {
+        console.error("Rebuild error:", err);
+        return Response.json({ success: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    // List templates
+    if (url.pathname === "/api/templates" && req.method === "GET") {
+      return Response.json(TemplateManager.list());
+    }
+
+    // Get specific template
+    if (url.pathname.startsWith("/api/templates/") && req.method === "GET") {
+      const id = url.pathname.split("/").pop()!;
+      const content = TemplateManager.get(id);
+      if (content === null) {
+        return new Response("Template Not Found", { status: 404 });
+      }
+      return new Response(content, { headers: { "Content-Type": "text/yaml" } });
+    }
+
+    // Create a new template or update
+    if (url.pathname === "/api/templates" && req.method === "POST") {
+      try {
+        const body = await req.json() as any;
+        if (!body.id || !body.content) {
+          return Response.json({ success: false, error: "Missing id or content" }, { status: 400 });
+        }
+        TemplateManager.createOrUpdate(body.id, body.content);
+        return Response.json({ success: true });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    // Update specific template
+    if (url.pathname.startsWith("/api/templates/") && req.method === "PUT") {
+      try {
+        const id = url.pathname.split("/").pop()!;
+        const body = await req.json() as any;
+        if (!body.content) {
+          return Response.json({ success: false, error: "Missing content" }, { status: 400 });
+        }
+        TemplateManager.createOrUpdate(id, body.content);
+        return Response.json({ success: true });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    // Delete specific template
+    if (url.pathname.startsWith("/api/templates/") && req.method === "DELETE") {
+      const id = url.pathname.split("/").pop()!;
+      const deleted = TemplateManager.delete(id);
+      if (!deleted) {
+        return Response.json({ success: false, error: "Template not found" }, { status: 404 });
+      }
+      return Response.json({ success: true });
+    }
+
+    let filePath = "./public" + url.pathname;
+    if (url.pathname === "/") filePath = "./public/index.html";
+    
+    const file = Bun.file(filePath);
+    if (await file.exists()) {
+      return new Response(file);
+    }
+    return new Response("Not Found", { status: 404 });
+  }
 });
 
 console.log(\`Listening on \${server.url}\`);

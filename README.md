@@ -9,4 +9,7 @@ bun run build.ts
 
 # start proxies
 bun run index.ts
+
+# compile
+bun build --compile ./index.ts --outfile proxy-service
 ```

@@ -1,4 +1,4 @@
-# bungee-emulator
+# bungee-tester
 
 ```bash
 # install dependencies

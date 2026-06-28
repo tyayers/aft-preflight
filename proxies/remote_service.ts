@@ -18,7 +18,7 @@ var message = context.getVariable("request.queryparam.message");
 if (!message)
   message = context.getVariable("propertyset.helloworld-helloworld.MESSAGE");
 if (!message)
-  message = "Hello world!";
+  message = "Hello world 11!";
 
 if (responseObject) {
   responseObject["message"] = message;
@@ -30,7 +30,7 @@ if (responseObject) {
 }
 
 
-export async function apigee_mockProxy(req: Request): Promise<Response> {
+export async function remote_serviceProxy(req: Request): Promise<Response> {
   const path = Http.getPath(req.url);
   const url = new URL(req.url);
 
@@ -69,7 +69,7 @@ export async function apigee_mockProxy(req: Request): Promise<Response> {
 
 
   const response = await fetch(
-    "https://mocktarget.apigee.net" + "/" + path,
+    "https://boomerang-service-323709580283.europe-west1.run.app" + "/" + path,
     {
       method: req.method,
       headers: {

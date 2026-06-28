@@ -20,18 +20,16 @@ let indexImports = "";
 let indexRoutes = "";
 
 // 3. Process each yaml file in templates
-const templates = fs
-  .readdirSync(TEMPLATES_DIR)
-  .filter((f) => f.endsWith(".yaml"));
+const templates = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml"));
 
 for (const templateFile of templates) {
-  const content = fs.readFileSync(
-    path.join(TEMPLATES_DIR, templateFile),
-    "utf8",
-  );
+  const content = fs.readFileSync(path.join(TEMPLATES_DIR, templateFile), "utf8");
   const data = yaml.load(content) as any;
 
   if (!data || !data.endpoints) continue;
+
+  const streamResponse =
+    data.parameters.find((x: any) => x.name === "StreamResponse")?.default === true;
 
   for (const endpoint of data.endpoints) {
     const basePath = endpoint.basePath;
@@ -65,9 +63,7 @@ for (const templateFile of templates) {
 
     // Generate policy sub-functions
     let policyFunctions = "";
-    const uniquePolicyNames = Array.from(
-      new Set([...requestSteps, ...responseSteps]),
-    );
+    const uniquePolicyNames = Array.from(new Set([...requestSteps, ...responseSteps]));
 
     for (const policyName of uniquePolicyNames) {
       const policy = data.policies?.find((p: any) => p.name === policyName);
@@ -80,9 +76,7 @@ for (const templateFile of templates) {
           policyCode = js.source;
         } else if (js.resourceUrl) {
           const resourceName = js.resourceUrl.replace("jsc://", "");
-          const resource = data.resources?.find(
-            (r: any) => r.name === resourceName,
-          );
+          const resource = data.resources?.find((r: any) => r.name === resourceName);
           policyCode = resource?.content || "";
         }
       }
@@ -108,6 +102,28 @@ function ${policyFunctionName}(request: any, response: any, context: any) {
 
     const requestPolicyCalls = generatePolicyCalls(requestSteps);
     const responsePolicyCalls = generatePolicyCalls(responseSteps);
+    const targetCall = !streamResponse
+      ? `  proxyResponse.content = await response.text();
+      proxyResponse.status = response.status;
+      ${responsePolicyCalls}
+      let newResponse = new Response(proxyResponse.content);
+      return newResponse;`
+      : `let newResponse = new Response(
+        async function* () {
+          if (response && response.body) {
+            for await (const chunk of response.body) {
+              let chunkString = Buffer.from(chunk).toString("utf-8");
+
+              // 2. Run Response Policies on each chunk
+              proxyResponse.content = chunkString;
+              proxyResponse.status = response.status;
+              ${responsePolicyCalls}
+              yield proxyResponse.content;
+            }
+          }
+        },
+        { status: response.status },
+      );`;
 
     // Generate proxy handler file content
     const proxyContent = `import { Http } from "../utilities/http";
@@ -150,9 +166,7 @@ export async function ${functionName}(req: Request): Promise<Response> {
   ${(data.resources || [])
     .filter((r: any) => r.type === "properties")
     .map((r: any) => {
-      const propLines = r.content
-        .split("\n")
-        .filter((l: string) => l.includes("="));
+      const propLines = r.content.split("\n").filter((l: string) => l.includes("="));
       const prefix = r.name.replace(".properties", "").replace(/-/g, ".");
       return propLines
         .map((l: string) => {
@@ -177,24 +191,7 @@ ${requestPolicyCalls}
     },
   );
 
-  let newResponse = new Response(
-    async function* () {
-      if (response && response.body) {
-        for await (const chunk of response.body) {
-          let chunkString = Buffer.from(chunk).toString("utf-8");
-
-          // 2. Run Response Policies on each chunk
-          proxyResponse.content = chunkString;
-          proxyResponse.status = response.status;
-
-${responsePolicyCalls}
-
-          yield proxyResponse.content;
-        }
-      }
-    },
-    { status: response.status },
-  );
+  ${targetCall}
 
   return newResponse;
 }
@@ -218,37 +215,12 @@ const server = Bun.serve({
 ${indexRoutes}  },
   async fetch(req) {
     const url = new URL(req.url);
-    
+
     // Add rebuild endpoint
     if (url.pathname === "/rebuild" && req.method === "POST") {
       console.log("Rebuild requested. Running build.ts...");
       try {
-        const proc = Bun.spawn(["bun", "run", "build.ts"]);
-        const exitCode = await proc.exited;
-        
-        if (exitCode !== 0) {
-          const errorOutput = await new Response(proc.stderr).text();
-          console.error("Build failed:", errorOutput);
-          return Response.json({ success: false, error: errorOutput }, { status: 500 });
-        }
-
-        console.log("Build complete! Restarting service...");
-        
-        // Stop the server to free up the port
-        server.stop();
-        
-        // Spawn a detached process running the same service
-        const child = spawn(process.argv[0], process.argv.slice(1), {
-          detached: true,
-          stdio: "inherit",
-        });
-        child.unref();
-
-        // Exit the current process after a short delay
-        setTimeout(() => {
-          console.log("Old process exiting...");
-          process.exit(0);
-        }, 100);
+        const proc = Bun.spawn(["./bun", "run", "build.ts"]);
 
         return Response.json({ success: true, message: "Build successful. Service restarted!" });
       } catch (err: any) {
@@ -313,7 +285,7 @@ ${indexRoutes}  },
 
     let filePath = "./public" + url.pathname;
     if (url.pathname === "/") filePath = "./public/index.html";
-    
+
     const file = Bun.file(filePath);
     if (await file.exists()) {
       return new Response(file);

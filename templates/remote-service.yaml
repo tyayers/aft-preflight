@@ -1,18 +1,18 @@
-name: local-service
+name: remote-service
 displayName: ""
 type: proxy
 categories: []
-description: API proxy for a local service
+description: API proxy for a remote service
 parameters:
   - name: StreamResponse
     description: Determines if the responses are streamed from the targets, or not.
     default: false
 endpoints:
-  - name: local-service
-    basePath: /local-service
+  - name: remote-service
+    basePath: /remote-service
     routes:
       - name: default
-        target: local-service
+        target: remote-service
     flows:
       - name: PostFlow
         mode: Response
@@ -20,13 +20,13 @@ endpoints:
           - name: helloworld-JS-AddHelloWorld
     faultRules: []
 targets:
-  - name: local-service
-    url: http://localhost:8081
+  - name: remote-service
+    url: https://boomerang-service-323709580283.europe-west1.run.app
     flows: []
     faultRules: []
     httpTargetConnection:
       properties: {}
-      url: http://localhost:8081
+      url: https://boomerang-service-323709580283.europe-west1.run.app
 policies:
   - name: helloworld-JS-AddHelloWorld
     type: Javascript

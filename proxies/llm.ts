@@ -51,24 +51,11 @@ export async function llmProxy(req: Request): Promise<Response> {
     },
   );
 
-  let newResponse = new Response(
-    async function* () {
-      if (response && response.body) {
-        for await (const chunk of response.body) {
-          let chunkString = Buffer.from(chunk).toString("utf-8");
-
-          // 2. Run Response Policies on each chunk
-          proxyResponse.content = chunkString;
-          proxyResponse.status = response.status;
-
-
-
-          yield proxyResponse.content;
-        }
-      }
-    },
-    { status: response.status },
-  );
+    proxyResponse.content = await response.text();
+      proxyResponse.status = response.status;
+      
+      let newResponse = new Response(proxyResponse.content);
+      return newResponse;
 
   return newResponse;
 }

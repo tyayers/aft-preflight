@@ -3,6 +3,7 @@ import { TemplateManager } from "./utilities/TemplateManager";
 import { apigee_mockProxy } from "./proxies/apigee_mock";
 import { local_serviceProxy } from "./proxies/local_service";
 import { llmProxy } from "./proxies/llm";
+import { remote_serviceProxy } from "./proxies/remote_service";
 
 const server = Bun.serve({
   port: process.env.PORT ? parseInt(process.env.PORT, 10) : 8080,
@@ -10,40 +11,16 @@ const server = Bun.serve({
     "/apigeemock/*": apigee_mockProxy,
     "/local-service/*": local_serviceProxy,
     "/llm/*": llmProxy,
+    "/remote-service/*": remote_serviceProxy,
   },
   async fetch(req) {
     const url = new URL(req.url);
-    
+
     // Add rebuild endpoint
     if (url.pathname === "/rebuild" && req.method === "POST") {
       console.log("Rebuild requested. Running build.ts...");
       try {
-        const proc = Bun.spawn(["bun", "run", "build.ts"]);
-        const exitCode = await proc.exited;
-        
-        if (exitCode !== 0) {
-          const errorOutput = await new Response(proc.stderr).text();
-          console.error("Build failed:", errorOutput);
-          return Response.json({ success: false, error: errorOutput }, { status: 500 });
-        }
-
-        console.log("Build complete! Restarting service...");
-        
-        // Stop the server to free up the port
-        server.stop();
-        
-        // Spawn a detached process running the same service
-        const child = spawn(process.argv[0], process.argv.slice(1), {
-          detached: true,
-          stdio: "inherit",
-        });
-        child.unref();
-
-        // Exit the current process after a short delay
-        setTimeout(() => {
-          console.log("Old process exiting...");
-          process.exit(0);
-        }, 100);
+        const proc = Bun.spawn(["./bun", "run", "build.ts"]);
 
         return Response.json({ success: true, message: "Build successful. Service restarted!" });
       } catch (err: any) {
@@ -70,7 +47,7 @@ const server = Bun.serve({
     // Create a new template or update
     if (url.pathname === "/api/templates" && req.method === "POST") {
       try {
-        const body = await req.json() as any;
+        const body = (await req.json()) as any;
         if (!body.id || !body.content) {
           return Response.json({ success: false, error: "Missing id or content" }, { status: 400 });
         }
@@ -85,7 +62,7 @@ const server = Bun.serve({
     if (url.pathname.startsWith("/api/templates/") && req.method === "PUT") {
       try {
         const id = url.pathname.split("/").pop()!;
-        const body = await req.json() as any;
+        const body = (await req.json()) as any;
         if (!body.content) {
           return Response.json({ success: false, error: "Missing content" }, { status: 400 });
         }
@@ -108,13 +85,14 @@ const server = Bun.serve({
 
     let filePath = "./public" + url.pathname;
     if (url.pathname === "/") filePath = "./public/index.html";
-    
+
     const file = Bun.file(filePath);
     if (await file.exists()) {
       return new Response(file);
     }
     return new Response("Not Found", { status: 404 });
-  }
+  },
 });
 
+console.log(Bun.argv);
 console.log(`Listening on ${server.url}`);

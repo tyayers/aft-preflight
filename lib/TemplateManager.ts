@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import yaml from "js-yaml";
 
 const TEMPLATES_DIR = "./templates";
 
@@ -43,14 +44,15 @@ export class TemplateManager {
     return null;
   }
 
-  static createOrUpdate(id: string, content: string): void {
+  static createOrUpdate(id: string, content: any): void {
     this.ensureDir();
     const sanitizedId = id.replace(/[^a-zA-Z0-9_-]/g, "");
     if (!sanitizedId) {
       throw new Error("Invalid template ID");
     }
     const filePath = path.join(TEMPLATES_DIR, `${sanitizedId}.yaml`);
-    fs.writeFileSync(filePath, content, "utf8");
+    const contentStr = typeof content === "string" ? content : yaml.dump(content);
+    fs.writeFileSync(filePath, contentStr, "utf8");
   }
 
   static delete(id: string): boolean {

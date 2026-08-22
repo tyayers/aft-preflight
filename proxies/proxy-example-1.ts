@@ -1,0 +1,113 @@
+import { Apigee, ApigeeContext, ApigeeRequest, ApigeeResponse } from "../lib/apigee";
+import { Http } from "../lib/http";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+  "Access-Control-Allow-Headers": "*",
+};
+
+export class ProxyExample1Proxy {
+  async JS_AddResponseData(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
+    const print = console.log;
+    var todoData = context.getVariable("calloutResponse.content");
+    var responseData = response.content.asJSON;
+
+    responseData["todos"] = JSON.parse(todoData);
+
+    context.setVariable("response.content", JSON.stringify(responseData));
+  }
+
+  async handle(req: Request): Promise<Response> {
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+      });
+    }
+
+    const context = new ApigeeContext(req);
+
+    try {
+      // 1. Run Request Flow Policies
+      await Apigee.serviceCallout({
+        "url": "https://jsonplaceholder.typicode.com/todos",
+        "requestVar": "myRequest",
+        "responseVar": "calloutResponse"
+      }, context);
+
+      // 2. Execute Target Connection
+      const path = Http.getPath(req.url, "/proxy-example");
+      const targetBaseUrl = "https://mocktarget.apigee.net";
+      const fullTargetUrl = path ? `${targetBaseUrl}/${path}` : targetBaseUrl;
+
+      const reqHeaders: Record<string, string> = {
+        ...context.request.headers,
+      };
+      if (req.headers.get("authorization")) {
+        reqHeaders["authorization"] = req.headers.get("authorization")!;
+      }
+
+      const response = await fetch(fullTargetUrl, {
+        method: req.method,
+        headers: reqHeaders,
+        body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        tls: { rejectUnauthorized: false } as any,
+      });
+
+      context.response.status = response.status;
+      context.response.statusText = response.statusText;
+      for (const [k, v] of response.headers.entries()) {
+        if (k.toLowerCase() !== "content-length") {
+          context.response.setHeader(k, v);
+        }
+      }
+      context.response.content = await response.text();
+
+      // 3. Run Response Flow Policies
+      await Apigee.assignMessage({
+        "assignTo": "response",
+        "ignoreUnresolvedVariables": true,
+        "setHeaders": {
+          "x-custom-1": "test header 1",
+          "x-custom-2": "test header 2"
+        }
+      }, context);
+      await this.JS_AddResponseData(context, context.request, context.response);
+
+      // 4. Return Response
+      const responseHeaders = {
+        ...corsHeaders,
+        ...context.response.headers,
+      };
+      return new Response(context.response.rawContent, {
+        status: context.response.status,
+        headers: responseHeaders,
+      });
+    } catch (err: any) {
+      if (context.fault) {
+        const responseHeaders = {
+          ...corsHeaders,
+          ...context.response.headers,
+        };
+        return new Response(context.response.rawContent || err.message, {
+          status: context.fault.status || context.response.status || 500,
+          headers: responseHeaders,
+        });
+      }
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "content-type": "application/json",
+        },
+      });
+    }
+  }
+}
+
+export const proxy_example_1Instance = new ProxyExample1Proxy();
+
+export async function proxy_example_1Proxy(req: Request): Promise<Response> {
+  return proxy_example_1Instance.handle(req);
+}

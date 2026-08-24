@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import yaml from "js-yaml";
 import { TemplateManager } from "./lib/TemplateManager";
+import { google_aiplatform_targetProxy } from "./proxies/google-aiplatform-target";
 import { sample_proxyProxy } from "./proxies/sample-proxy";
 import { proxy_example_1Proxy } from "./proxies/proxy-example-1";
 
@@ -54,6 +55,8 @@ async function parseTemplateRequestBody(req: Request): Promise<{ name?: string; 
 const server = Bun.serve({
   port: process.env.PORT ? parseInt(process.env.PORT, 10) : 8080,
   routes: {
+    "/rest-ai-googlecloud/*": google_aiplatform_targetProxy,
+    "/rest-ai-googlecloud": google_aiplatform_targetProxy,
     "/sample/*": sample_proxyProxy,
     "/sample": sample_proxyProxy,
     "/proxy-example/*": proxy_example_1Proxy,

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/apigee/apigee-templater/main/schema/gateway.schema.1.0.json
+gateway: apigee
+schemaVersion: 1.0.0
+name: google-aiplatform-target
+displayName: Sample Proxy
+type: proxy
+description: Simple proxy to mocktarget.apigee.net
+endpoints:
+  - name: default
+    basePath: /rest-ai-googlecloud
+    routes:
+      - name: default
+        target: default
+    flows: []
+targets:
+  - name: default
+    url: https://aiplatform.googleapis.com
+policies: []

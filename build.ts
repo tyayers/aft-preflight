@@ -449,16 +449,19 @@ for (const templateFile of templates) {
       const targetBaseUrl = "${targetUrl.replace(/\/+$/, "")}";
       const fullTargetUrl = path ? \`\${targetBaseUrl}/\${path}\` : targetBaseUrl;
 
-      const reqHeaders: Record<string, string> = {
-        ...context.request.headers,
-      };
-      if (req.headers.get("authorization")) {
-        reqHeaders["authorization"] = req.headers.get("authorization")!;
+      const headers = new Headers();
+      const authorization = req.headers.get("authorization");
+      const contentType = req.headers.get("content-type");
+      if (authorization) {
+        headers.set("authorization", authorization);
+      }
+      if (contentType) {
+        headers.set("content-type", contentType);
       }
 
       const response = await fetch(fullTargetUrl, {
         method: req.method,
-        headers: reqHeaders,
+        headers,
         body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
         tls: { rejectUnauthorized: false } as any,
       });
@@ -477,16 +480,19 @@ for (const templateFile of templates) {
       const targetBaseUrl = "${targetUrl.replace(/\/+$/, "")}";
       const fullTargetUrl = path ? \`\${targetBaseUrl}/\${path}\` : targetBaseUrl;
 
-      const reqHeaders: Record<string, string> = {
-        ...context.request.headers,
-      };
-      if (req.headers.get("authorization")) {
-        reqHeaders["authorization"] = req.headers.get("authorization")!;
+      const headers = new Headers();
+      const authorization = req.headers.get("authorization");
+      const contentType = req.headers.get("content-type");
+      if (authorization) {
+        headers.set("authorization", authorization);
+      }
+      if (contentType) {
+        headers.set("content-type", contentType);
       }
 
       const response = await fetch(fullTargetUrl, {
         method: req.method,
-        headers: reqHeaders,
+        headers,
         body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
         tls: { rejectUnauthorized: false } as any,
       });

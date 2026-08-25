@@ -315,9 +315,6 @@ for (const templateFile of templates) {
   const endpoints = data.endpoints || (data.defaultEndpoint ? [data.defaultEndpoint] : []);
   if (!endpoints.length) continue;
 
-  const streamResponse =
-    data.parameters?.find((x: any) => x.name === "StreamResponse")?.default === true;
-
   for (const endpoint of endpoints) {
     const basePath = endpoint.basePath;
     const targetName = endpoint.routes?.[0]?.target;
@@ -373,13 +370,13 @@ for (const templateFile of templates) {
     }
 
     // Generate direct policy call for each step
-    const generateStepCall = (stepName: string, indent: string = "      ") => {
+    const generateStepCall = (stepName: string, indent: string = "      ", selfVar: string = "this") => {
       const policy = data.policies?.find((p: any) => p.name === stepName);
       if (!policy) return `${indent}// Unknown policy: ${stepName}`;
 
       if (policy.type === "Javascript") {
         const methodName = stepName.replace(/[^a-zA-Z0-9]/g, "_");
-        return `${indent}await this.${methodName}(context, context.request, context.response);`;
+        return `${indent}await ${selfVar}.${methodName}(context, context.request, context.response);`;
       }
 
       if (policy.type === "ServiceCallout") {
@@ -408,7 +405,7 @@ for (const templateFile of templates) {
     const requestPolicyExecutions = requestSteps.map((s) => generateStepCall(s)).join("\n");
     const responsePolicyExecutions = responseSteps.map((s) => generateStepCall(s)).join("\n");
     const streamingResponsePolicyExecutions = responseSteps
-      .map((s) => generateStepCall(s, "              "))
+      .map((s) => generateStepCall(s, "              ", "self"))
       .join("\n");
 
     // Property set initialization from resources
@@ -443,20 +440,17 @@ for (const templateFile of templates) {
     // Target call generation
     let targetExecution = "";
     if (targetUrl) {
-      if (!streamResponse) {
-        targetExecution = `      // 2. Execute Target Connection
+      targetExecution = `      // 2. Execute Target Connection
       const path = Http.getPath(req.url, "${basePath}");
       const targetBaseUrl = "${targetUrl.replace(/\/+$/, "")}";
       const fullTargetUrl = path ? \`\${targetBaseUrl}/\${path}\` : targetBaseUrl;
 
       const headers = new Headers();
-      const authorization = req.headers.get("authorization");
-      const contentType = req.headers.get("content-type");
-      if (authorization) {
-        headers.set("authorization", authorization);
-      }
-      if (contentType) {
-        headers.set("content-type", contentType);
+      const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
+      for (const [k, v] of Object.entries(context.request.headers)) {
+        if (!skipHeaders.has(k.toLowerCase()) && v !== undefined && v !== null) {
+          headers.set(k, v);
+        }
       }
 
       const response = await fetch(fullTargetUrl, {
@@ -473,59 +467,36 @@ for (const templateFile of templates) {
           context.response.setHeader(k, v);
         }
       }
-      context.response.content = await response.text();\n\n`;
-      } else {
-        targetExecution = `      // 2. Execute Target Connection
-      const path = Http.getPath(req.url, "${basePath}");
-      const targetBaseUrl = "${targetUrl.replace(/\/+$/, "")}";
-      const fullTargetUrl = path ? \`\${targetBaseUrl}/\${path}\` : targetBaseUrl;
 
-      const headers = new Headers();
-      const authorization = req.headers.get("authorization");
-      const contentType = req.headers.get("content-type");
-      if (authorization) {
-        headers.set("authorization", authorization);
-      }
-      if (contentType) {
-        headers.set("content-type", contentType);
-      }
-
-      const response = await fetch(fullTargetUrl, {
-        method: req.method,
-        headers,
-        body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        tls: { rejectUnauthorized: false } as any,
-      });
-
-      context.response.status = response.status;
-      for (const [k, v] of response.headers.entries()) {
-        if (k.toLowerCase() !== "content-length") {
-          context.response.setHeader(k, v);
-        }
-      }
-
-      const self = this;
-      const responseHeaders = {
-        ...corsHeaders,
-        ...context.response.headers,
-      };
-      return new Response(
-        async function* () {
-          if (response && response.body) {
-            for await (const chunk of response.body) {
-              const chunkString = Buffer.from(chunk).toString("utf-8");
-              context.response.content = chunkString;
-${streamingResponsePolicyExecutions}
-              yield context.response.rawContent;
+      const targetContentType = response.headers.get("content-type") || "";
+      if (Http.isStreaming(targetContentType)) {
+        const self = this;
+        const responseHeaders = {
+          ...corsHeaders,
+          ...context.response.headers,
+        };
+        return new Response(
+          async function* () {
+            if (response && response.body) {
+              for await (const chunk of response.body) {
+                const chunkString = Buffer.from(chunk).toString("utf-8");
+                context.response.content = chunkString;
+${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" : ""}                yield context.response.rawContent;
+              }
             }
+          },
+          {
+            status: context.response.status,
+            headers: responseHeaders,
           }
-        },
-        {
-          status: context.response.status,
-          headers: responseHeaders,
-        }
-      );\n\n`;
+        );
       }
+
+      if (Http.isText(targetContentType)) {
+        context.response.content = await response.text();
+      } else {
+        context.response.content = new Uint8Array(await response.arrayBuffer());
+      }\n\n`;
     }
 
     const proxyFileContent = `import { Apigee, ApigeeContext, ApigeeRequest, ApigeeResponse } from "../lib/apigee";

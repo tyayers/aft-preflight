@@ -1,4 +1,5 @@
 import type { ApigeeContext } from "../apigee";
+import { Http } from "../http";
 
 export interface ServiceCalloutOptions {
   url: string;
@@ -48,11 +49,17 @@ export async function serviceCallout(options: ServiceCalloutOptions, context: Ap
       tls: { rejectUnauthorized: false } as any,
     });
 
-    const responseText = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+    let responseContent: any;
+    if (Http.isText(contentType)) {
+      responseContent = await response.text();
+    } else {
+      responseContent = new Uint8Array(await response.arrayBuffer());
+    }
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
     // Populate context variables
-    context.setVariable(`${responseVarName}.content`, responseText);
+    context.setVariable(`${responseVarName}.content`, responseContent);
     context.setVariable(`${responseVarName}.status.code`, response.status);
     context.setVariable(`${responseVarName}.reason.phrase`, response.statusText);
 
@@ -63,7 +70,7 @@ export async function serviceCallout(options: ServiceCalloutOptions, context: Ap
     context.setVariable(responseVarName, {
       status: response.status,
       headers: responseHeaders,
-      content: responseText,
+      content: responseContent,
     });
   } catch (err: any) {
     console.error(`ServiceCallout error for ${resolvedUrl}:`, err.message);

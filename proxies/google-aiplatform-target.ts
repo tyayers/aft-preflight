@@ -20,18 +20,16 @@ export class GoogleAiplatformTargetProxy {
 
     try {
       // 2. Execute Target Connection
-      const path = Http.getPath(req.url, "/rest-ai-googlecloud");
-      const targetBaseUrl = "https://aiplatform.googleapis.com";
+      const path = Http.getPath(req.url, "/v1/projects");
+      const targetBaseUrl = "https://aiplatform.googleapis.com/v1/projects";
       const fullTargetUrl = path ? `${targetBaseUrl}/${path}` : targetBaseUrl;
 
       const headers = new Headers();
-      const authorization = req.headers.get("authorization");
-      const contentType = req.headers.get("content-type");
-      if (authorization) {
-        headers.set("authorization", authorization);
-      }
-      if (contentType) {
-        headers.set("content-type", contentType);
+      const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
+      for (const [k, v] of Object.entries(context.request.headers)) {
+        if (!skipHeaders.has(k.toLowerCase()) && v !== undefined && v !== null) {
+          headers.set(k, v);
+        }
       }
 
       const response = await fetch(fullTargetUrl, {
@@ -48,7 +46,36 @@ export class GoogleAiplatformTargetProxy {
           context.response.setHeader(k, v);
         }
       }
-      context.response.content = await response.text();
+
+      const targetContentType = response.headers.get("content-type") || "";
+      if (Http.isStreaming(targetContentType)) {
+        const self = this;
+        const responseHeaders = {
+          ...corsHeaders,
+          ...context.response.headers,
+        };
+        return new Response(
+          async function* () {
+            if (response && response.body) {
+              for await (const chunk of response.body) {
+                const chunkString = Buffer.from(chunk).toString("utf-8");
+                context.response.content = chunkString;
+                yield context.response.rawContent;
+              }
+            }
+          },
+          {
+            status: context.response.status,
+            headers: responseHeaders,
+          }
+        );
+      }
+
+      if (Http.isText(targetContentType)) {
+        context.response.content = await response.text();
+      } else {
+        context.response.content = new Uint8Array(await response.arrayBuffer());
+      }
 
       // 4. Return Response
       const responseHeaders = {

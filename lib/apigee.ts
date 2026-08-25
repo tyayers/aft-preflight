@@ -46,7 +46,7 @@ export class ApigeeRequest {
   path: string = "";
   method: string = "GET";
   url: string = "";
-  private _content: string = "";
+  private _content: any = "";
 
   constructor(req?: Request) {
     if (req) {
@@ -69,6 +69,13 @@ export class ApigeeRequest {
 
   get content(): any {
     const raw = this._content;
+    if (
+      raw instanceof ArrayBuffer ||
+      ArrayBuffer.isView(raw) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(raw))
+    ) {
+      return raw;
+    }
     const strObj = new String(raw);
     Object.defineProperty(strObj, "asJSON", {
       get: () => {
@@ -87,6 +94,12 @@ export class ApigeeRequest {
   set content(val: any) {
     if (val === null || val === undefined) {
       this._content = "";
+    } else if (
+      val instanceof ArrayBuffer ||
+      ArrayBuffer.isView(val) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(val))
+    ) {
+      this._content = val;
     } else if (typeof val === "object" && !(val instanceof String)) {
       this._content = JSON.stringify(val);
     } else {
@@ -94,7 +107,7 @@ export class ApigeeRequest {
     }
   }
 
-  get rawContent(): string {
+  get rawContent(): any {
     return this._content;
   }
 
@@ -123,9 +136,9 @@ export class ApigeeResponse {
   status: number = 200;
   statusText: string = "OK";
   headers: Record<string, string> = {};
-  private _content: string = "";
+  private _content: any = "";
 
-  constructor(status: number = 200, headers: Record<string, string> = {}, content: string = "") {
+  constructor(status: number = 200, headers: Record<string, string> = {}, content: any = "") {
     this.status = status;
     this.headers = {};
     for (const [k, v] of Object.entries(headers)) {
@@ -136,6 +149,13 @@ export class ApigeeResponse {
 
   get content(): any {
     const raw = this._content;
+    if (
+      raw instanceof ArrayBuffer ||
+      ArrayBuffer.isView(raw) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(raw))
+    ) {
+      return raw;
+    }
     const strObj = new String(raw);
     Object.defineProperty(strObj, "asJSON", {
       get: () => {
@@ -154,6 +174,12 @@ export class ApigeeResponse {
   set content(val: any) {
     if (val === null || val === undefined) {
       this._content = "";
+    } else if (
+      val instanceof ArrayBuffer ||
+      ArrayBuffer.isView(val) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(val))
+    ) {
+      this._content = val;
     } else if (typeof val === "object" && !(val instanceof String)) {
       this._content = JSON.stringify(val);
     } else {
@@ -161,7 +187,7 @@ export class ApigeeResponse {
     }
   }
 
-  get rawContent(): string {
+  get rawContent(): any {
     return this._content;
   }
 
@@ -296,6 +322,9 @@ export class ApigeeContext {
     return template.replace(/\{([^{}]+)\}/g, (match, varName) => {
       const val = this.getVariable(varName.trim());
       if (val !== undefined && val !== null) {
+        if (ArrayBuffer.isView(val) || val instanceof ArrayBuffer) {
+          return "[binary data]";
+        }
         return typeof val === "object" ? JSON.stringify(val) : String(val);
       }
       return ignoreUnresolved ? "" : match;

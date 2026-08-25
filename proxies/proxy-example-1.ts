@@ -41,16 +41,17 @@ export class ProxyExample1Proxy {
       const targetBaseUrl = "https://mocktarget.apigee.net";
       const fullTargetUrl = path ? `${targetBaseUrl}/${path}` : targetBaseUrl;
 
-      const reqHeaders: Record<string, string> = {
-        ...context.request.headers,
-      };
-      if (req.headers.get("authorization")) {
-        reqHeaders["authorization"] = req.headers.get("authorization")!;
+      const headers = new Headers();
+      const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
+      for (const [k, v] of Object.entries(context.request.headers)) {
+        if (!skipHeaders.has(k.toLowerCase()) && v !== undefined && v !== null) {
+          headers.set(k, v);
+        }
       }
 
       const response = await fetch(fullTargetUrl, {
         method: req.method,
-        headers: reqHeaders,
+        headers,
         body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
         tls: { rejectUnauthorized: false } as any,
       });
@@ -62,7 +63,45 @@ export class ProxyExample1Proxy {
           context.response.setHeader(k, v);
         }
       }
-      context.response.content = await response.text();
+
+      const targetContentType = response.headers.get("content-type") || "";
+      if (Http.isStreaming(targetContentType)) {
+        const self = this;
+        const responseHeaders = {
+          ...corsHeaders,
+          ...context.response.headers,
+        };
+        return new Response(
+          async function* () {
+            if (response && response.body) {
+              for await (const chunk of response.body) {
+                const chunkString = Buffer.from(chunk).toString("utf-8");
+                context.response.content = chunkString;
+              await Apigee.assignMessage({
+                "assignTo": "response",
+                "ignoreUnresolvedVariables": true,
+                "setHeaders": {
+                  "x-custom-1": "test header 1",
+                  "x-custom-2": "test header 2"
+                }
+              }, context);
+              await self.JS_AddResponseData(context, context.request, context.response);
+                yield context.response.rawContent;
+              }
+            }
+          },
+          {
+            status: context.response.status,
+            headers: responseHeaders,
+          }
+        );
+      }
+
+      if (Http.isText(targetContentType)) {
+        context.response.content = await response.text();
+      } else {
+        context.response.content = new Uint8Array(await response.arrayBuffer());
+      }
 
       // 3. Run Response Flow Policies
       await Apigee.assignMessage({

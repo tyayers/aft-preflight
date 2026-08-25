@@ -2,17 +2,22 @@
 gateway: apigee
 schemaVersion: 1.0.0
 name: google-aiplatform-target
-displayName: Sample Proxy
-type: proxy
-description: Simple proxy to mocktarget.apigee.net
+type: feature
+description: Proxy for Google Cloud Model Garden models.
 endpoints:
-  - name: default
-    basePath: /rest-ai-googlecloud
+  - name: googlecloud
+    basePath: /v1/projects
     routes:
-      - name: default
-        target: default
+      - name: googlecloud
+        target: googlecloud
     flows: []
+    faultRules: []
+parameters: []
 targets:
-  - name: default
-    url: https://aiplatform.googleapis.com
+  - name: googlecloud
+    url: https://aiplatform.googleapis.com/v1/projects
+    flows: []
+    faultRules: []
 policies: []
+resources: []
+tests: []

@@ -23,8 +23,15 @@ policies:
   - name: AM-SetResponseHeader
     type: AssignMessage
     content:
-      assignMessage:
-        displayName: AM-SetResponseHeader
-        setHeader:
-          - name: X-Hello
-            value: Hello world!
+      AssignMessage:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          name: AM-SetResponseHeader
+        DisplayName: AM-SetResponseHeader
+        Set:
+          Headers:
+            Header:
+              metadata:
+                name: x-hello
+              _text: Hello world!

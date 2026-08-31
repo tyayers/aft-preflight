@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "*",
 };
 
+const print = console.log;
+
 export class SampleProxyProxy {
   async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {

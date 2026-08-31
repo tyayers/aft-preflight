@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import yaml from "js-yaml";
 import { TemplateManager } from "./lib/TemplateManager";
 import { google_aiplatform_targetProxy } from "./proxies/google-aiplatform-target";
+import { testlocalProxy } from "./proxies/testlocal";
 import { sample_proxyProxy } from "./proxies/sample-proxy";
 import { proxy_example_1Proxy } from "./proxies/proxy-example-1";
 
@@ -57,6 +58,8 @@ const server = Bun.serve({
   routes: {
     "/v1/projects/*": google_aiplatform_targetProxy,
     "/v1/projects": google_aiplatform_targetProxy,
+    "/v1/chat/completions/*": testlocalProxy,
+    "/v1/chat/completions": testlocalProxy,
     "/sample/*": sample_proxyProxy,
     "/sample": sample_proxyProxy,
     "/proxy-example/*": proxy_example_1Proxy,

@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "*",
 };
 
+const print = console.log;
+
 export class ProxyExample1Proxy {
   async JS_AddResponseData(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
     const print = console.log;

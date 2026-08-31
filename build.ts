@@ -26,6 +26,67 @@ function getPolicyConfig(policy: any) {
   return content;
 }
 
+function findResource(resources: any[], urlOrName: string) {
+  if (!urlOrName) return undefined;
+  const clean = urlOrName.replace(/^jsc:\/\//, "").trim();
+  return resources.find((r: any) => {
+    const rName = (r.name || "").replace(/^jsc:\/\//, "").trim();
+    return (
+      rName === clean ||
+      rName === `${clean}.js` ||
+      `${rName}.js` === clean ||
+      r.name === urlOrName
+    );
+  });
+}
+
+function getIncludeUrls(policy: any): string[] {
+  const config = getPolicyConfig(policy);
+  const sources = [
+    config?.IncludeURL,
+    config?.includeUrl,
+    config?.IncludeUrl,
+    config?.includeURL,
+    config?.IncludeURLs,
+    config?.includeUrls,
+    policy?.content?.IncludeURL,
+    policy?.content?.includeUrl,
+    policy?.IncludeURL,
+    policy?.includeUrl,
+  ];
+
+  const urls: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    const list = Array.isArray(src) ? src : [src];
+    for (const item of list) {
+      if (typeof item === "string" && item.trim()) {
+        urls.push(item.trim());
+      } else if (item && typeof item === "object") {
+        const val = item._text ?? item.value ?? item.url ?? item.href ?? "";
+        if (typeof val === "string" && val.trim()) {
+          urls.push(val.trim());
+        }
+      }
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
+function extractFunctionNames(code: string): string[] {
+  const fnNames: string[] = [];
+  const functionRegex = /function\s+([a-zA-Z0-9_$]+)\s*\(/g;
+  let match;
+  while ((match = functionRegex.exec(code)) !== null) {
+    fnNames.push(match[1]);
+  }
+  const exportRegex = /exports\.([a-zA-Z0-9_$]+)\s*=/g;
+  while ((match = exportRegex.exec(code)) !== null) {
+    fnNames.push(match[1]);
+  }
+  return Array.from(new Set(fnNames));
+}
+
 // Helper to extract JavaScript source code
 function getJavascriptSource(policy: any, resources: any[] = []): string {
   const config = getPolicyConfig(policy);
@@ -35,16 +96,7 @@ function getJavascriptSource(policy: any, resources: any[] = []): string {
   const resourceUrl =
     config.ResourceURL || config.resourceUrl || config.ResourceUrl || config.resourceURL;
   if (resourceUrl) {
-    const resourceName = resourceUrl.replace(/^jsc:\/\//, "");
-    const resource = resources.find((r: any) => r.name === resourceName);
-    if (resource && resource.content) {
-      return resource.content;
-    }
-  }
-  const includeUrl = config.IncludeURL || config.includeUrl;
-  if (includeUrl) {
-    const resourceName = includeUrl.replace(/^jsc:\/\//, "");
-    const resource = resources.find((r: any) => r.name === resourceName);
+    const resource = findResource(resources, resourceUrl);
     if (resource && resource.content) {
       return resource.content;
     }
@@ -349,8 +401,38 @@ for (const templateFile of templates) {
       processFlows(target.flows, true);
     }
 
-    // Collect all policies used in this endpoint and generate JS methods
-    const allStepNames = Array.from(new Set([...requestSteps, ...responseSteps]));
+    // Collect all IncludeURL resources referenced by Javascript policies in this template
+    const includedResourceNames = new Set<string>();
+    for (const policy of (data.policies || [])) {
+      if (policy.type === "Javascript") {
+        const urls = getIncludeUrls(policy);
+        urls.forEach((u) => includedResourceNames.add(u));
+      }
+    }
+
+    let includedResourcesCode = "";
+    const exposedClassFunctions: string[] = [];
+
+    for (const resUrl of includedResourceNames) {
+      const res = findResource(data.resources || [], resUrl);
+      if (res && res.content) {
+        includedResourcesCode += `// --- Included Resource: ${res.name || resUrl} ---\n${res.content}\n\n`;
+        const fnNames = extractFunctionNames(res.content);
+        exposedClassFunctions.push(...fnNames);
+      }
+    }
+
+    const uniqueExposedFns = Array.from(new Set(exposedClassFunctions));
+    const classFunctionAssignments = uniqueExposedFns.length > 0
+      ? `  // Callable IncludeURL functions\n${uniqueExposedFns.map((fn) => `  ${fn} = ${fn};`).join("\n")}\n\n`
+      : "";
+
+    // Collect all policies used in this endpoint and any JS policies in data.policies and generate JS methods
+    const allStepNames = Array.from(new Set([
+      ...requestSteps,
+      ...responseSteps,
+      ...(data.policies || []).filter((p: any) => p.type === "Javascript").map((p: any) => p.name)
+    ]));
     let jsMethods = "";
 
     for (const policyName of allStepNames) {
@@ -508,8 +590,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "*",
 };
 
-export class ${className} {
-${jsMethods}  async handle(req: Request): Promise<Response> {
+const print = console.log;
+
+${includedResourcesCode}export class ${className} {
+${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,

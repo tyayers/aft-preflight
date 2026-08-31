@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "*",
 };
 
+const print = console.log;
+
 export class GoogleAiplatformTargetProxy {
   async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {

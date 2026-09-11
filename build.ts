@@ -133,7 +133,7 @@ function extractServiceCalloutOptions(policy: any): any {
       const headerList = toArray(headersContainer.Header || headersContainer.header);
       headers = {};
       for (const h of headerList) {
-        const hName = h.metadata?.name || h.name || h._name;
+        const hName = h.metadata?.name || h.name || h._name || h.Name;
         const hVal = h._text ?? h.value ?? "";
         if (hName) headers[hName] = hVal;
       }
@@ -147,6 +147,9 @@ function extractServiceCalloutOptions(policy: any): any {
     }
   }
 
+  const authBlock = targetConn?.Authentication || targetConn?.authentication;
+  const googleAccessToken = authBlock?.GoogleAccessToken || authBlock?.googleAccessToken;
+
   const result: any = { url };
   if (method) result.method = method;
   if (headers && Object.keys(headers).length > 0) result.headers = headers;
@@ -154,6 +157,7 @@ function extractServiceCalloutOptions(policy: any): any {
   if (requestVar) result.requestVar = requestVar;
   if (responseVar) result.responseVar = responseVar;
   if (continueOnError) result.continueOnError = true;
+  if (googleAccessToken) result.authentication = { googleAccessToken: true };
 
   return result;
 }
@@ -187,7 +191,7 @@ function extractAssignMessageOptions(policy: any): any {
       const headerList = toArray(headersContainer.Header || headersContainer.header);
       const setHeaders: Record<string, string> = {};
       for (const h of headerList) {
-        const hName = h.metadata?.name || h.name || h._name;
+        const hName = h.metadata?.name || h.name || h._name || h.Name;
         const hVal = h._text ?? h.value ?? (typeof h === "string" ? h : "");
         if (hName) setHeaders[hName] = hVal;
       }
@@ -199,7 +203,7 @@ function extractAssignMessageOptions(policy: any): any {
       const queryList = toArray(queryParamsContainer.QueryParam || queryParamsContainer.queryParam);
       const setQueryParams: Record<string, string> = {};
       for (const q of queryList) {
-        const qName = q.metadata?.name || q.name || q._name;
+        const qName = q.metadata?.name || q.name || q._name || q.Name;
         const qVal = q._text ?? q.value ?? (typeof q === "string" ? q : "");
         if (qName) setQueryParams[qName] = qVal;
       }
@@ -227,6 +231,16 @@ function extractAssignMessageOptions(policy: any): any {
     if (reasonPhrase !== undefined) {
       result.setReasonPhrase = String(reasonPhrase);
     }
+
+    const authBlock = setBlock.Authentication || setBlock.authentication;
+    if (authBlock) {
+      const headerName = authBlock.HeaderName || authBlock.headerName || "Authorization";
+      const googleAccessToken = authBlock.GoogleAccessToken || authBlock.googleAccessToken;
+      result.setAuthentication = {
+        headerName,
+        googleAccessToken: googleAccessToken ? {} : undefined,
+      };
+    }
   }
 
   // Add
@@ -237,7 +251,7 @@ function extractAssignMessageOptions(policy: any): any {
       const headerList = toArray(headersContainer.Header || headersContainer.header);
       const addHeaders: Record<string, string> = {};
       for (const h of headerList) {
-        const hName = h.metadata?.name || h.name || h._name;
+        const hName = h.metadata?.name || h.name || h._name || h.Name;
         const hVal = h._text ?? h.value ?? (typeof h === "string" ? h : "");
         if (hName) addHeaders[hName] = hVal;
       }
@@ -253,7 +267,7 @@ function extractAssignMessageOptions(policy: any): any {
       const headerList = toArray(headersContainer.Header || headersContainer.header);
       const removeHeaders: string[] = [];
       for (const h of headerList) {
-        const hName = h.metadata?.name || h.name || h._name;
+        const hName = h.metadata?.name || h.name || h._name || h.Name;
         if (hName) removeHeaders.push(hName);
       }
       if (removeHeaders.length > 0) result.removeHeaders = removeHeaders;
@@ -263,7 +277,7 @@ function extractAssignMessageOptions(policy: any): any {
       const queryList = toArray(queryParamsContainer.QueryParam || queryParamsContainer.queryParam);
       const removeQueryParams: string[] = [];
       for (const q of queryList) {
-        const qName = q.metadata?.name || q.name || q._name;
+        const qName = q.metadata?.name || q.name || q._name || q.Name;
         if (qName) removeQueryParams.push(qName);
       }
       if (removeQueryParams.length > 0) result.removeQueryParams = removeQueryParams;
@@ -290,7 +304,7 @@ function extractVerifyApiKeyOptions(policy: any): any {
   const config = getPolicyConfig(policy);
   const apiKeyConfig = config.APIKey || config.apiKey || config.ApiKey;
   return {
-    keyRef: apiKeyConfig?.ref || undefined,
+    keyRef: apiKeyConfig?.metadata?.ref || apiKeyConfig?.ref || undefined,
     keyValue: apiKeyConfig?.value || apiKeyConfig?._text || undefined,
     policyName: config.metadata?.name || policy.name,
     continueOnError: config.metadata?.continueOnError === "true" || config.metadata?.continueOnError === true,
@@ -333,6 +347,58 @@ function extractKeyValueMapOptions(policy: any): any {
   return result;
 }
 
+// Helper to extract OASValidation options
+function extractOasValidationOptions(policy: any): any {
+  const config = getPolicyConfig(policy);
+  const oasResource = config.OASResource || config.oasResource || config.OASResourceURL;
+  const validateMessageBody =
+    config.Options?.ValidateMessageBody !== "false" && config.Options?.ValidateMessageBody !== false;
+  return {
+    policyName: config.metadata?.name || policy.name,
+    oasResource: typeof oasResource === "string" ? oasResource : oasResource?._text,
+    validateMessageBody,
+    continueOnError: config.metadata?.continueOnError === "true" || config.metadata?.continueOnError === true,
+  };
+}
+
+// Helper to extract DataCapture options
+function extractDataCaptureOptions(policy: any): any {
+  const config = getPolicyConfig(policy);
+  const captures = toArray(config.Capture || config.capture);
+  const collectors: any[] = [];
+  for (const cap of captures) {
+    const collectorName = cap.DataCollector || cap.dataCollector || cap.name;
+    const collect = cap.Collect || cap.collect;
+    const ref = collect?.metadata?.ref || collect?.ref;
+    const defaultValue = collect?.metadata?.default || collect?.default;
+    if (collectorName) {
+      collectors.push({ collectorName, ref, defaultValue });
+    }
+  }
+  return {
+    policyName: config.metadata?.name || policy.name,
+    collectors,
+    continueOnError: config.metadata?.continueOnError === "true" || config.metadata?.continueOnError === true,
+  };
+}
+
+// Helper to extract RaiseFault options
+function extractRaiseFaultOptions(policy: any): any {
+  const config = getPolicyConfig(policy);
+  const faultResponse = config.FaultResponse || config.faultResponse;
+  const setBlock = faultResponse?.Set || faultResponse?.set;
+  const statusCode = setBlock?.StatusCode || setBlock?.statusCode || 500;
+  const reasonPhrase = setBlock?.ReasonPhrase || setBlock?.reasonPhrase || "Internal Server Error";
+  const payload = setBlock?.Payload?._text || setBlock?.Payload || setBlock?.payload || "";
+
+  return {
+    policyName: config.metadata?.name || policy.name,
+    statusCode: parseInt(String(statusCode), 10) || 500,
+    reasonPhrase: String(reasonPhrase),
+    payload: String(payload),
+  };
+}
+
 // Helper to convert string to PascalCase identifier
 function toPascalCase(str: string): string {
   return str
@@ -369,9 +435,6 @@ for (const templateFile of templates) {
 
   for (const endpoint of endpoints) {
     const basePath = endpoint.basePath;
-    const targetName = endpoint.routes?.[0]?.target;
-    const target = data.targets?.find((t: any) => t.name === targetName);
-    const targetUrl = target?.url || target?.httpTargetConnection?.url || target?.httpTargetConnection?.URL;
 
     // Determine filenames and class names
     const fileBaseName = templateBaseName;
@@ -379,31 +442,84 @@ for (const templateFile of templates) {
     const className = `${toPascalCase(templateBaseName)}Proxy`;
     const functionName = `${templateBaseName.replace(/[^a-zA-Z0-9]/g, "_")}Proxy`;
 
-    // Collect flow steps
-    const requestSteps: string[] = [];
-    const responseSteps: string[] = [];
+    // Collect flow step references with conditions
+    interface FlowStep {
+      name: string;
+      condition?: string;
+    }
 
-    const processFlows = (flows: any[], isTarget: boolean = false) => {
+    const requestSteps: FlowStep[] = [];
+    const responseSteps: FlowStep[] = [];
+    const faultSteps: FlowStep[] = [];
+    const targetPreFlowSteps: FlowStep[] = [];
+    const targetPostFlowSteps: FlowStep[] = [];
+    const targetEventFlowSteps: FlowStep[] = [];
+    const targetFaultSteps: FlowStep[] = [];
+
+    const processFlows = (flows: any[], reqArr: FlowStep[], resArr: FlowStep[]) => {
       if (!flows) return;
       for (const flow of flows) {
         const mode = flow.mode || "";
         if (mode === "Request") {
-          flow.steps?.forEach((s: any) => requestSteps.push(s.name));
+          flow.steps?.forEach((s: any) => reqArr.push({ name: s.name, condition: s.condition }));
         } else if (mode === "Response") {
-          flow.steps?.forEach((s: any) => responseSteps.push(s.name));
+          flow.steps?.forEach((s: any) => resArr.push({ name: s.name, condition: s.condition }));
         }
       }
     };
 
-    // Apigee flow order: Endpoint Request -> Target Request -> Target Response -> Endpoint Response
-    processFlows(endpoint.flows, false);
-    if (target) {
-      processFlows(target.flows, true);
+    // Collect endpoint flows
+    processFlows(endpoint.flows, requestSteps, responseSteps);
+
+    // Collect endpoint fault rules
+    const faultRules = endpoint.faultRules || [];
+    for (const fr of faultRules) {
+      if (fr.steps) {
+        fr.steps.forEach((s: any) => faultSteps.push({ name: s.name, condition: s.condition || fr.condition }));
+      }
+    }
+    const defaultFaultRule = endpoint.defaultFaultRule || data.defaultFaultRule;
+    if (defaultFaultRule?.steps) {
+      defaultFaultRule.steps.forEach((s: any) => faultSteps.push({ name: s.name, condition: s.condition }));
     }
 
-    // Collect all IncludeURL resources referenced by Javascript policies in this template
+    // Collect target flows across targets
+    for (const t of data.targets || []) {
+      if (t.flows) {
+        for (const f of t.flows) {
+          if (f.name === "PreFlow" && f.mode === "Request") {
+            f.steps?.forEach((s: any) => targetPreFlowSteps.push({ name: s.name, condition: s.condition }));
+          } else if (f.name === "PostFlow" && f.mode === "Response") {
+            f.steps?.forEach((s: any) => targetPostFlowSteps.push({ name: s.name, condition: s.condition }));
+          } else if (f.name === "EventFlow" && f.mode === "Response") {
+            f.steps?.forEach((s: any) => targetEventFlowSteps.push({ name: s.name, condition: s.condition }));
+          }
+        }
+      }
+      if (t.defaultFaultRule?.steps) {
+        t.defaultFaultRule.steps.forEach((s: any) => targetFaultSteps.push({ name: s.name, condition: s.condition }));
+      }
+    }
+
+    // Deduplicate target flow steps by name + condition
+    const dedupeSteps = (steps: FlowStep[]) => {
+      const seen = new Set<string>();
+      return steps.filter((s) => {
+        const key = `${s.name}:${s.condition || ""}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
+    const uniqueTargetPreFlowSteps = dedupeSteps(targetPreFlowSteps);
+    const uniqueTargetPostFlowSteps = dedupeSteps(targetPostFlowSteps);
+    const uniqueTargetEventFlowSteps = dedupeSteps(targetEventFlowSteps);
+    const uniqueTargetFaultSteps = dedupeSteps(targetFaultSteps);
+
+    // Collect all IncludeURL resources referenced by Javascript policies
     const includedResourceNames = new Set<string>();
-    for (const policy of (data.policies || [])) {
+    for (const policy of data.policies || []) {
       if (policy.type === "Javascript") {
         const urls = getIncludeUrls(policy);
         urls.forEach((u) => includedResourceNames.add(u));
@@ -423,16 +539,24 @@ for (const templateFile of templates) {
     }
 
     const uniqueExposedFns = Array.from(new Set(exposedClassFunctions));
-    const classFunctionAssignments = uniqueExposedFns.length > 0
-      ? `  // Callable IncludeURL functions\n${uniqueExposedFns.map((fn) => `  ${fn} = ${fn};`).join("\n")}\n\n`
-      : "";
+    const classFunctionAssignments =
+      uniqueExposedFns.length > 0
+        ? `  // Callable IncludeURL functions\n${uniqueExposedFns.map((fn) => `  ${fn} = ${fn};`).join("\n")}\n\n`
+        : "";
 
-    // Collect all policies used in this endpoint and any JS policies in data.policies and generate JS methods
-    const allStepNames = Array.from(new Set([
-      ...requestSteps,
-      ...responseSteps,
-      ...(data.policies || []).filter((p: any) => p.type === "Javascript").map((p: any) => p.name)
-    ]));
+    // Collect all JS policies and generate JS methods
+    const allStepNames = Array.from(
+      new Set([
+        ...requestSteps.map((s) => s.name),
+        ...responseSteps.map((s) => s.name),
+        ...faultSteps.map((s) => s.name),
+        ...uniqueTargetPreFlowSteps.map((s) => s.name),
+        ...uniqueTargetPostFlowSteps.map((s) => s.name),
+        ...uniqueTargetEventFlowSteps.map((s) => s.name),
+        ...uniqueTargetFaultSteps.map((s) => s.name),
+        ...(data.policies || []).filter((p: any) => p.type === "Javascript").map((p: any) => p.name),
+      ])
+    );
     let jsMethods = "";
 
     for (const policyName of allStepNames) {
@@ -451,83 +575,145 @@ for (const templateFile of templates) {
       }
     }
 
-    // Generate direct policy call for each step
-    const generateStepCall = (stepName: string, indent: string = "      ", selfVar: string = "this") => {
+    // Generate direct policy call for each step (with condition evaluation)
+    const generateStepCall = (step: FlowStep, indent: string = "      ", selfVar: string = "this") => {
+      const stepName = step.name;
+      const stepCondition = step.condition;
       const policy = data.policies?.find((p: any) => p.name === stepName);
       if (!policy) return `${indent}// Unknown policy: ${stepName}`;
 
+      let callCode = "";
       if (policy.type === "Javascript") {
         const methodName = stepName.replace(/[^a-zA-Z0-9]/g, "_");
-        return `${indent}await ${selfVar}.${methodName}(context, context.request, context.response);`;
-      }
-
-      if (policy.type === "ServiceCallout") {
+        callCode = `await ${selfVar}.${methodName}(context, context.request, context.response);`;
+      } else if (policy.type === "ServiceCallout") {
         const options = extractServiceCalloutOptions(policy);
-        return `${indent}await Apigee.serviceCallout(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent)}, context);`;
-      }
-
-      if (policy.type === "AssignMessage") {
+        callCode = `await Apigee.serviceCallout(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "AssignMessage") {
         const options = extractAssignMessageOptions(policy);
-        return `${indent}await Apigee.assignMessage(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent)}, context);`;
-      }
-
-      if (policy.type === "VerifyAPIKey") {
+        callCode = `await Apigee.assignMessage(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "VerifyAPIKey") {
         const options = extractVerifyApiKeyOptions(policy);
-        return `${indent}await Apigee.verifyApiKey(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent)}, context);`;
-      }
-
-      if (policy.type === "KeyValueMapOperations") {
+        callCode = `await Apigee.verifyApiKey(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "KeyValueMapOperations") {
         const options = extractKeyValueMapOptions(policy);
-        return `${indent}await Apigee.keyValueMapOperations(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent)}, context);`;
+        callCode = `await Apigee.keyValueMapOperations(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "OASValidation") {
+        const options = extractOasValidationOptions(policy);
+        callCode = `await Apigee.oasValidation(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "DataCapture") {
+        const options = extractDataCaptureOptions(policy);
+        callCode = `await Apigee.dataCapture(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else if (policy.type === "RaiseFault") {
+        const options = extractRaiseFaultOptions(policy);
+        callCode = `await Apigee.raiseFault(${JSON.stringify(options, null, 2).replace(/\n/g, "\n" + indent + "  ")}, context);`;
+      } else {
+        callCode = `// Policy: ${stepName} (${policy.type})`;
       }
 
-      return `${indent}// Policy: ${stepName} (${policy.type})`;
+      if (stepCondition && stepCondition.trim()) {
+        return `${indent}if (Apigee.evaluateCondition(${JSON.stringify(stepCondition)}, context)) {\n${indent}  ${callCode}\n${indent}}`;
+      }
+      return `${indent}${callCode}`;
     };
 
     const requestPolicyExecutions = requestSteps.map((s) => generateStepCall(s)).join("\n");
     const responsePolicyExecutions = responseSteps.map((s) => generateStepCall(s)).join("\n");
+    const targetPreFlowExecutions = uniqueTargetPreFlowSteps.map((s) => generateStepCall(s, "      ")).join("\n");
+    const targetPostFlowExecutions = uniqueTargetPostFlowSteps.map((s) => generateStepCall(s, "      ")).join("\n");
+    const targetFaultExecutions = uniqueTargetFaultSteps.map((s) => generateStepCall(s, "        ")).join("\n");
+    const streamingTargetEventFlowExecutions = uniqueTargetEventFlowSteps
+      .map((s) => generateStepCall(s, "                ", "self"))
+      .join("\n");
     const streamingResponsePolicyExecutions = responseSteps
       .map((s) => generateStepCall(s, "              ", "self"))
       .join("\n");
 
-    // Property set initialization from resources
-    const propertySetInits = (data.resources || [])
-      .filter((r: any) => r.type === "properties" || r.name?.endsWith(".properties"))
-      .map((r: any) => {
-        const propLines = (r.content || "").split("\n").filter((l: string) => l.includes("="));
-        const prefix = r.name.replace(/\.properties$/, "").replace(/-/g, ".");
-        return propLines
-          .map((l: string) => {
-            const [k, ...v] = l.split("=");
-            const val = v.join("=").trim();
-            return `context.setVariable("propertyset.${prefix}.${k ? k.trim() : ""}", ${JSON.stringify(val)});`;
-          })
-          .join("\n      ");
-      })
-      .filter(Boolean)
-      .join("\n      ");
+    const faultRuleExecutions = faultSteps.map((s) => generateStepCall(s, "        ")).join("\n");
 
-    const propertySetBlock = propertySetInits
-      ? `      // Initialize propertyset variables from resources\n      ${propertySetInits}\n\n`
-      : "";
+    // Register all template resources into globalResourceStore
+    let resourceStoreInits = "";
+    for (const res of data.resources || []) {
+      if (res.name && res.content) {
+        resourceStoreInits += `globalResourceStore[${JSON.stringify(res.name)}] = ${JSON.stringify(res.content)};\n`;
+      }
+    }
+
+    // Property set initialization from resources & parameters
+    const propLinesArr: string[] = [];
+    for (const r of data.resources || []) {
+      if (r.type === "properties" || r.name?.endsWith(".properties")) {
+        const lines = (r.content || "").split("\n").filter((l: string) => l.includes("="));
+        const prefix = r.name.replace(/\.properties$/, "").replace(/-/g, ".");
+        for (const l of lines) {
+          const [k, ...v] = l.split("=");
+          const val = v.join("=").trim();
+          propLinesArr.push(`context.setVariable("propertyset.${prefix}.${k ? k.trim() : ""}", ${JSON.stringify(val)});`);
+        }
+      }
+    }
+    for (const param of data.parameters || []) {
+      if (param.name && param.default !== undefined) {
+        propLinesArr.push(`if (context.getVariable("propertyset.ai.${param.name}") === undefined) { context.setVariable("propertyset.ai.${param.name}", ${JSON.stringify(param.default)}); }`);
+      }
+    }
+
+    const propertySetBlock =
+      propLinesArr.length > 0
+        ? `      // Initialize propertyset variables\n      ${propLinesArr.join("\n      ")}\n\n`
+        : "";
 
     const requestFlowBlock = requestPolicyExecutions
       ? `      // 1. Run Request Flow Policies\n${requestPolicyExecutions}\n\n`
       : "";
 
     const responseFlowBlock = responsePolicyExecutions
-      ? `      // 3. Run Response Flow Policies\n${responsePolicyExecutions}\n\n`
+      ? `      // 3. Run Endpoint Response Flow Policies\n${responsePolicyExecutions}\n\n`
       : "";
 
-    // Target call generation
-    let targetExecution = "";
-    if (targetUrl) {
-      targetExecution = `      // 2. Execute Target Connection
-      const path = Http.getPath(req.url, "${basePath}");
-      const targetBaseUrl = "${targetUrl.replace(/\/+$/, "")}";
-      const fullTargetUrl = path ? \`\${targetBaseUrl}/\${path}\` : targetBaseUrl;
+    // Route and Targets generation
+    const routesConfig = (endpoint.routes || []).map((r: any) => ({
+      name: r.name,
+      condition: r.condition,
+      target: r.target,
+    }));
 
-      const headers = new Headers();
+    const targetsMap: Record<string, any> = {};
+    for (const t of data.targets || []) {
+      const tUrl = t.url || t.httpTargetConnection?.url || t.httpTargetConnection?.URL || "";
+      targetsMap[t.name] = {
+        name: t.name,
+        url: tUrl,
+      };
+    }
+
+    // Default target selection
+    const defaultTargetName = endpoint.routes?.[0]?.target || Object.keys(targetsMap)[0];
+    const defaultTargetUrl = defaultTargetName ? targetsMap[defaultTargetName]?.url || "" : "";
+
+    let targetExecution = "";
+    if (Object.keys(targetsMap).length > 0 || defaultTargetUrl) {
+      targetExecution = `      // 2. Select and Execute Target Connection
+      const path = Http.getPath(req.url, "${basePath}");
+      const routes = ${JSON.stringify(routesConfig, null, 2).replace(/\n/g, "\n      ")};
+      const targetsMap: Record<string, any> = ${JSON.stringify(targetsMap, null, 2).replace(/\n/g, "\n      ")};
+
+      let selectedTargetName = "${defaultTargetName || ""}";
+      for (const route of routes) {
+        if (!route.condition || Apigee.evaluateCondition(route.condition, context)) {
+          if (route.target) {
+            selectedTargetName = route.target;
+            break;
+          }
+        }
+      }
+
+      const targetObj = targetsMap[selectedTargetName];
+      const rawTargetUrl = targetObj?.url || "${defaultTargetUrl}";
+      const resolvedTargetBaseUrl = context.resolveVariables(rawTargetUrl).replace(/\\/+$/, "");
+      const fullTargetUrl = path ? \`\${resolvedTargetBaseUrl}/\${path}\` : resolvedTargetBaseUrl;
+
+${targetPreFlowExecutions ? `      // Target PreFlow\n${targetPreFlowExecutions}\n\n` : ""}      const headers = new Headers();
       const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
       for (const [k, v] of Object.entries(context.request.headers)) {
         if (!skipHeaders.has(k.toLowerCase()) && v !== undefined && v !== null) {
@@ -535,22 +721,41 @@ for (const templateFile of templates) {
         }
       }
 
-      const response = await fetch(fullTargetUrl, {
-        method: req.method,
-        headers,
-        body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        tls: { rejectUnauthorized: false } as any,
-      });
+      let response: Response;
+      try {
+        response = await fetch(fullTargetUrl, {
+          method: req.method,
+          headers,
+          body: req.method !== "GET" && req.method !== "HEAD" ? context.request.rawContent : undefined,
+          tls: { rejectUnauthorized: false } as any,
+        });
 
-      context.response.status = response.status;
-      context.response.statusText = response.statusText;
-      for (const [k, v] of response.headers.entries()) {
-        if (k.toLowerCase() !== "content-length") {
-          context.response.setHeader(k, v);
+        context.response.status = response.status;
+        context.response.statusText = response.statusText;
+        for (const [k, v] of response.headers.entries()) {
+          if (k.toLowerCase() !== "content-length") {
+            context.response.setHeader(k, v);
+          }
+        }
+      } catch (targetErr: any) {
+        context.setVariable("target.failed", true);
+        context.setVariable("target.error", targetErr.message);
+${targetFaultExecutions ? `        // Target DefaultFaultRule\n${targetFaultExecutions}\n` : ""}        if (!context.response.content && context.response.status === 200) {
+          response = new Response(JSON.stringify({ error: { message: targetErr.message, code: 502 } }), {
+            status: 502,
+            headers: { "content-type": "application/json" },
+          });
+          context.response.status = 502;
+          context.response.setHeader("content-type", "application/json");
+        } else {
+          response = new Response(context.response.rawContent, {
+            status: context.response.status,
+            headers: context.response.headers,
+          });
         }
       }
 
-      const targetContentType = response.headers.get("content-type") || "";
+      const targetContentType = context.response.getHeader("content-type") || response?.headers?.get("content-type") || "";
       if (Http.isStreaming(targetContentType)) {
         const self = this;
         const responseHeaders = {
@@ -563,7 +768,7 @@ for (const templateFile of templates) {
               for await (const chunk of response.body) {
                 const chunkString = Buffer.from(chunk).toString("utf-8");
                 context.response.content = chunkString;
-${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" : ""}                yield context.response.rawContent;
+${streamingTargetEventFlowExecutions ? streamingTargetEventFlowExecutions + "\n" : ""}${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" : ""}                yield context.response.rawContent;
               }
             }
           },
@@ -578,10 +783,18 @@ ${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" :
         context.response.content = await response.text();
       } else {
         context.response.content = new Uint8Array(await response.arrayBuffer());
-      }\n\n`;
+      }
+
+${targetPostFlowExecutions ? `      // Target PostFlow\n${targetPostFlowExecutions}\n\n` : ""}`;
     }
 
-    const proxyFileContent = `import { Apigee, ApigeeContext, ApigeeRequest, ApigeeResponse } from "../lib/apigee";
+    const proxyFileContent = `import {
+  Apigee,
+  ApigeeContext,
+  ApigeeRequest,
+  ApigeeResponse,
+  globalResourceStore,
+} from "../lib/apigee";
 import { Http } from "../lib/http";
 
 const corsHeaders = {
@@ -592,6 +805,7 @@ const corsHeaders = {
 
 const print = console.log;
 
+${resourceStoreInits}
 ${includedResourcesCode}export class ${className} {
 ${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
@@ -602,6 +816,15 @@ ${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Res
     }
 
     const context = new ApigeeContext(req);
+
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      const contentType = req.headers.get("content-type") || "";
+      if (Http.isText(contentType)) {
+        context.request.content = await req.text();
+      } else {
+        context.request.content = new Uint8Array(await req.arrayBuffer());
+      }
+    }
 
     try {
 ${propertySetBlock}${requestFlowBlock}${targetExecution}${responseFlowBlock}      // 4. Return Response
@@ -614,22 +837,13 @@ ${propertySetBlock}${requestFlowBlock}${targetExecution}${responseFlowBlock}    
         headers: responseHeaders,
       });
     } catch (err: any) {
-      if (context.fault) {
-        const responseHeaders = {
-          ...corsHeaders,
-          ...context.response.headers,
-        };
-        return new Response(context.response.rawContent || err.message, {
-          status: context.fault.status || context.response.status || 500,
-          headers: responseHeaders,
-        });
-      }
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "content-type": "application/json",
-        },
+${faultRuleExecutions ? `      // Execute FaultRules\n${faultRuleExecutions}\n` : ""}      const responseHeaders = {
+        ...corsHeaders,
+        ...context.response.headers,
+      };
+      return new Response(context.response.rawContent || JSON.stringify({ error: err.message }), {
+        status: context.fault?.status || context.response.status || 500,
+        headers: responseHeaders,
       });
     }
   }

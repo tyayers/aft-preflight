@@ -7,6 +7,13 @@ export interface AssignVariableConfig {
   template?: string;
 }
 
+export interface AssignAuthenticationConfig {
+  headerName?: string;
+  googleAccessToken?: {
+    scopes?: string[];
+  };
+}
+
 export interface AssignMessageOptions {
   setHeaders?: Record<string, string>;
   addHeaders?: Record<string, string>;
@@ -16,6 +23,7 @@ export interface AssignMessageOptions {
   setPayload?: { value: string; contentType?: string } | string;
   setStatusCode?: number;
   setReasonPhrase?: string;
+  setAuthentication?: AssignAuthenticationConfig;
   assignVariables?: AssignVariableConfig[];
   assignTo?: "request" | "response" | string;
   ignoreUnresolvedVariables?: boolean;
@@ -23,7 +31,7 @@ export interface AssignMessageOptions {
 
 /**
  * AssignMessage Policy implementation
- * Sets, adds, removes headers/queryparams/payload, or sets variables
+ * Sets, adds, removes headers/queryparams/payload, or sets variables and auth tokens
  */
 export async function assignMessage(options: AssignMessageOptions, context: ApigeeContext): Promise<void> {
   if (!options) return;
@@ -37,6 +45,9 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
       const resolvedVal = context.resolveVariables(val, ignoreUnresolved);
       if (assignTo === "request") {
         context.request.setHeader(name, resolvedVal);
+        if (options.setStatusCode !== undefined || context.fault) {
+          context.response.setHeader(name, resolvedVal);
+        }
       } else if (assignTo === "response") {
         context.response.setHeader(name, resolvedVal);
       } else {
@@ -83,7 +94,23 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
     }
   }
 
-  // 6. Set Payload
+  // 6. Set Authentication (e.g. GoogleAccessToken)
+  if (options.setAuthentication) {
+    const headerName = options.setAuthentication.headerName || "Authorization";
+    const googleToken =
+      process.env.GOOGLE_ACCESS_TOKEN ||
+      process.env.GCP_ACCESS_TOKEN ||
+      context.getVariable("request.header.authorization") ||
+      "mock-google-cloud-token";
+    const bearerVal = googleToken.startsWith("Bearer ") ? googleToken : `Bearer ${googleToken}`;
+    if (assignTo === "request") {
+      context.request.setHeader(headerName, bearerVal);
+    } else {
+      context.response.setHeader(headerName, bearerVal);
+    }
+  }
+
+  // 7. Set Payload
   if (options.setPayload !== undefined) {
     let payloadContent = "";
     let contentType = "";
@@ -97,6 +124,11 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
     if (assignTo === "request") {
       context.request.content = resolvedPayload;
       if (contentType) context.request.setHeader("content-type", contentType);
+      // If setting error payload or statusCode in fault rule, populate response too
+      if (options.setStatusCode !== undefined || context.fault) {
+        context.response.content = resolvedPayload;
+        if (contentType) context.response.setHeader("content-type", contentType);
+      }
     } else if (assignTo === "response") {
       context.response.content = resolvedPayload;
       if (contentType) context.response.setHeader("content-type", contentType);
@@ -105,15 +137,17 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
     }
   }
 
-  // 7. Set StatusCode & ReasonPhrase
+  // 8. Set StatusCode & ReasonPhrase
   if (options.setStatusCode !== undefined) {
     context.response.status = options.setStatusCode;
+    context.setVariable("response.status.code", options.setStatusCode);
+    context.setVariable("message.status.code", options.setStatusCode);
   }
   if (options.setReasonPhrase !== undefined) {
     context.response.statusText = options.setReasonPhrase;
   }
 
-  // 8. AssignVariables
+  // 9. AssignVariables
   if (options.assignVariables) {
     for (const av of options.assignVariables) {
       if (!av.name) continue;

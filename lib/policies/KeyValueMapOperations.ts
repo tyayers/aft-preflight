@@ -1,15 +1,29 @@
 import type { ApigeeContext } from "../apigee";
+import fs from "node:fs";
+import path from "node:path";
 
 export interface KeyValueStore {
   [mapIdentifier: string]: Record<string, any>;
 }
 
-// Global in-memory KVM store
-export const globalKvmStore: KeyValueStore = {};
+// Global in-memory KVM store initialized with default seeds
+export const globalKvmStore: KeyValueStore = {
+  "AI-Config": {
+    FailoverModel: "google/gemini-3.7-flash",
+    PriceList: JSON.stringify({
+      default: { requestPerMillionTokens: 1, responsePerMillionTokens: 3 },
+      "google/gemini-3.7-flash": { requestPerMillionTokens: 0.15, responsePerMillionTokens: 0.6 },
+      "google/gemini-3.5-flash-lite": { requestPerMillionTokens: 0.075, responsePerMillionTokens: 0.3 },
+    }),
+    GroupsLookup: "{}",
+    Groups: "[]",
+  },
+};
 
 export interface KeyValueMapGet {
   key: string;
   assignTo: string;
+  defaultValue?: string;
 }
 
 export interface KeyValueMapPut {
@@ -23,17 +37,36 @@ export interface KeyValueMapOptions {
   get?: KeyValueMapGet[];
   put?: KeyValueMapPut[];
   delete?: string[];
+  scope?: string;
+}
+
+/**
+ * Load local file-backed KVM entries if exists (./kvm/{mapIdentifier}.json)
+ */
+function loadLocalFileKvm(mapIdentifier: string): Record<string, any> | null {
+  try {
+    const kvmPath = path.join(process.cwd(), "kvm", `${mapIdentifier}.json`);
+    if (fs.existsSync(kvmPath)) {
+      const data = fs.readFileSync(kvmPath, "utf8");
+      return JSON.parse(data);
+    }
+  } catch {
+    // Ignore file read error in local mode
+  }
+  return null;
 }
 
 /**
  * KeyValueMapOperations Policy implementation
+ * Provides local lightweight KVM storage and variable assignment
  */
 export async function keyValueMapOperations(options: KeyValueMapOptions, context: ApigeeContext): Promise<void> {
   if (!options) return;
 
   const mapIdentifier = options.mapIdentifier || "default";
   if (!globalKvmStore[mapIdentifier]) {
-    globalKvmStore[mapIdentifier] = {};
+    const fileKvm = loadLocalFileKvm(mapIdentifier);
+    globalKvmStore[mapIdentifier] = fileKvm || {};
   }
   const map = globalKvmStore[mapIdentifier];
 
@@ -61,7 +94,16 @@ export async function keyValueMapOperations(options: KeyValueMapOptions, context
   if (options.get) {
     for (const item of options.get) {
       if (item.key && item.assignTo) {
-        const val = map[item.key] ?? "";
+        let val = map[item.key];
+        if (val === undefined) {
+          // Check environment variable fallback: e.g. KVM_AICONFIG_FAILOVERMODEL
+          const envKey = `KVM_${mapIdentifier.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase()}_${item.key.toUpperCase()}`;
+          if (process.env[envKey] !== undefined) {
+            val = process.env[envKey];
+          } else {
+            val = item.defaultValue ?? "";
+          }
+        }
         context.setVariable(item.assignTo, val);
       }
     }

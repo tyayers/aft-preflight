@@ -4,3 +4,4 @@ export * from "./KeyValueMapOperations";
 export * from "./VerifyAPIKey";
 export * from "./DataCapture";
 export * from "./RaiseFault";
+export * from "./OASValidation";

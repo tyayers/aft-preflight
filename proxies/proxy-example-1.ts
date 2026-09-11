@@ -1,4 +1,10 @@
-import { Apigee, ApigeeContext, ApigeeRequest, ApigeeResponse } from "../lib/apigee";
+import {
+  Apigee,
+  ApigeeContext,
+  ApigeeRequest,
+  ApigeeResponse,
+  globalResourceStore,
+} from "../lib/apigee";
 import { Http } from "../lib/http";
 
 const corsHeaders = {
@@ -8,6 +14,8 @@ const corsHeaders = {
 };
 
 const print = console.log;
+
+globalResourceStore["Resource-1.js"] = "var todoData = context.getVariable(\"calloutResponse.content\");\nvar responseData = response.content.asJSON;\n\nresponseData[\"todos\"] = JSON.parse(todoData);\n\ncontext.setVariable(\"response.content\", JSON.stringify(responseData));";
 
 export class ProxyExample1Proxy {
   async JS_AddResponseData(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
@@ -30,18 +38,52 @@ export class ProxyExample1Proxy {
 
     const context = new ApigeeContext(req);
 
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      const contentType = req.headers.get("content-type") || "";
+      if (Http.isText(contentType)) {
+        context.request.content = await req.text();
+      } else {
+        context.request.content = new Uint8Array(await req.arrayBuffer());
+      }
+    }
+
     try {
       // 1. Run Request Flow Policies
       await Apigee.serviceCallout({
-        "url": "https://jsonplaceholder.typicode.com/todos",
-        "requestVar": "myRequest",
-        "responseVar": "calloutResponse"
-      }, context);
+          "url": "https://jsonplaceholder.typicode.com/todos",
+          "requestVar": "myRequest",
+          "responseVar": "calloutResponse"
+        }, context);
 
-      // 2. Execute Target Connection
+      // 2. Select and Execute Target Connection
       const path = Http.getPath(req.url, "/proxy-example");
-      const targetBaseUrl = "https://mocktarget.apigee.net";
-      const fullTargetUrl = path ? `${targetBaseUrl}/${path}` : targetBaseUrl;
+      const routes = [
+        {
+          "name": "default",
+          "target": "default"
+        }
+      ];
+      const targetsMap: Record<string, any> = {
+        "default": {
+          "name": "default",
+          "url": "https://mocktarget.apigee.net"
+        }
+      };
+
+      let selectedTargetName = "default";
+      for (const route of routes) {
+        if (!route.condition || Apigee.evaluateCondition(route.condition, context)) {
+          if (route.target) {
+            selectedTargetName = route.target;
+            break;
+          }
+        }
+      }
+
+      const targetObj = targetsMap[selectedTargetName];
+      const rawTargetUrl = targetObj?.url || "https://mocktarget.apigee.net";
+      const resolvedTargetBaseUrl = context.resolveVariables(rawTargetUrl).replace(/\/+$/, "");
+      const fullTargetUrl = path ? `${resolvedTargetBaseUrl}/${path}` : resolvedTargetBaseUrl;
 
       const headers = new Headers();
       const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
@@ -51,22 +93,41 @@ export class ProxyExample1Proxy {
         }
       }
 
-      const response = await fetch(fullTargetUrl, {
-        method: req.method,
-        headers,
-        body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        tls: { rejectUnauthorized: false } as any,
-      });
+      let response: Response;
+      try {
+        response = await fetch(fullTargetUrl, {
+          method: req.method,
+          headers,
+          body: req.method !== "GET" && req.method !== "HEAD" ? context.request.rawContent : undefined,
+          tls: { rejectUnauthorized: false } as any,
+        });
 
-      context.response.status = response.status;
-      context.response.statusText = response.statusText;
-      for (const [k, v] of response.headers.entries()) {
-        if (k.toLowerCase() !== "content-length") {
-          context.response.setHeader(k, v);
+        context.response.status = response.status;
+        context.response.statusText = response.statusText;
+        for (const [k, v] of response.headers.entries()) {
+          if (k.toLowerCase() !== "content-length") {
+            context.response.setHeader(k, v);
+          }
+        }
+      } catch (targetErr: any) {
+        context.setVariable("target.failed", true);
+        context.setVariable("target.error", targetErr.message);
+        if (!context.response.content && context.response.status === 200) {
+          response = new Response(JSON.stringify({ error: { message: targetErr.message, code: 502 } }), {
+            status: 502,
+            headers: { "content-type": "application/json" },
+          });
+          context.response.status = 502;
+          context.response.setHeader("content-type", "application/json");
+        } else {
+          response = new Response(context.response.rawContent, {
+            status: context.response.status,
+            headers: context.response.headers,
+          });
         }
       }
 
-      const targetContentType = response.headers.get("content-type") || "";
+      const targetContentType = context.response.getHeader("content-type") || response?.headers?.get("content-type") || "";
       if (Http.isStreaming(targetContentType)) {
         const self = this;
         const responseHeaders = {
@@ -80,13 +141,13 @@ export class ProxyExample1Proxy {
                 const chunkString = Buffer.from(chunk).toString("utf-8");
                 context.response.content = chunkString;
               await Apigee.assignMessage({
-                "assignTo": "response",
-                "ignoreUnresolvedVariables": true,
-                "setHeaders": {
-                  "x-custom-1": "test header 1",
-                  "x-custom-2": "test header 2"
-                }
-              }, context);
+                  "assignTo": "response",
+                  "ignoreUnresolvedVariables": true,
+                  "setHeaders": {
+                    "x-custom-1": "test header 1",
+                    "x-custom-2": "test header 2"
+                  }
+                }, context);
               await self.JS_AddResponseData(context, context.request, context.response);
                 yield context.response.rawContent;
               }
@@ -105,15 +166,15 @@ export class ProxyExample1Proxy {
         context.response.content = new Uint8Array(await response.arrayBuffer());
       }
 
-      // 3. Run Response Flow Policies
+      // 3. Run Endpoint Response Flow Policies
       await Apigee.assignMessage({
-        "assignTo": "response",
-        "ignoreUnresolvedVariables": true,
-        "setHeaders": {
-          "x-custom-1": "test header 1",
-          "x-custom-2": "test header 2"
-        }
-      }, context);
+          "assignTo": "response",
+          "ignoreUnresolvedVariables": true,
+          "setHeaders": {
+            "x-custom-1": "test header 1",
+            "x-custom-2": "test header 2"
+          }
+        }, context);
       await this.JS_AddResponseData(context, context.request, context.response);
 
       // 4. Return Response
@@ -126,22 +187,13 @@ export class ProxyExample1Proxy {
         headers: responseHeaders,
       });
     } catch (err: any) {
-      if (context.fault) {
-        const responseHeaders = {
-          ...corsHeaders,
-          ...context.response.headers,
-        };
-        return new Response(context.response.rawContent || err.message, {
-          status: context.fault.status || context.response.status || 500,
-          headers: responseHeaders,
-        });
-      }
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "content-type": "application/json",
-        },
+      const responseHeaders = {
+        ...corsHeaders,
+        ...context.response.headers,
+      };
+      return new Response(context.response.rawContent || JSON.stringify({ error: err.message }), {
+        status: context.fault?.status || context.response.status || 500,
+        headers: responseHeaders,
       });
     }
   }

@@ -5,6 +5,7 @@ import {
   verifyApiKey,
   dataCapture,
   raiseFault,
+  oasValidation,
   type ServiceCalloutOptions,
   type AssignMessageOptions,
   type AssignVariableConfig,
@@ -16,8 +17,32 @@ import {
   type DataCaptureOptions,
   type DataCaptureCollector,
   type RaiseFaultOptions,
+  type OASValidationOptions,
   globalKvmStore,
+  globalResourceStore,
+  capturedDataMetrics,
 } from "./policies";
+import { evaluateCondition } from "./condition";
+
+// Extend String prototype to support Apigee's .asJSON accessor on JSON strings
+declare global {
+  interface String {
+    asJSON?: any;
+  }
+}
+
+if (!Object.prototype.hasOwnProperty.call(String.prototype, "asJSON")) {
+  Object.defineProperty(String.prototype, "asJSON", {
+    get() {
+      try {
+        return JSON.parse(this.toString());
+      } catch {
+        return null;
+      }
+    },
+    configurable: true,
+  });
+}
 
 export {
   serviceCallout,
@@ -26,6 +51,8 @@ export {
   verifyApiKey,
   dataCapture,
   raiseFault,
+  oasValidation,
+  evaluateCondition,
   type ServiceCalloutOptions,
   type AssignMessageOptions,
   type AssignVariableConfig,
@@ -37,7 +64,10 @@ export {
   type DataCaptureOptions,
   type DataCaptureCollector,
   type RaiseFaultOptions,
+  type OASValidationOptions,
   globalKvmStore,
+  globalResourceStore,
+  capturedDataMetrics,
 };
 
 export class ApigeeRequest {
@@ -59,52 +89,33 @@ export class ApigeeRequest {
           this.queryParams[key] = val;
         });
       } catch {
-        this.path = "";
+        // ignore
       }
-      for (const [k, v] of req.headers.entries()) {
-        this.headers[k.toLowerCase()] = v;
-      }
+
+      // Populate headers
+      req.headers.forEach((val, key) => {
+        this.headers[key.toLowerCase()] = val;
+      });
     }
   }
 
   get content(): any {
-    const raw = this._content;
-    if (
-      raw instanceof ArrayBuffer ||
-      ArrayBuffer.isView(raw) ||
-      (typeof Buffer !== "undefined" && Buffer.isBuffer(raw))
-    ) {
-      return raw;
+    if (this._content && typeof this._content === "object" && !(this._content instanceof Uint8Array || this._content instanceof ArrayBuffer)) {
+      const obj = this._content;
+      return {
+        ...obj,
+        toString: () => JSON.stringify(obj),
+        valueOf: () => JSON.stringify(obj),
+        get asJSON() {
+          return obj;
+        },
+      };
     }
-    const strObj = new String(raw);
-    Object.defineProperty(strObj, "asJSON", {
-      get: () => {
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return {};
-        }
-      },
-      configurable: true,
-      enumerable: false,
-    });
-    return strObj;
+    return this._content;
   }
 
   set content(val: any) {
-    if (val === null || val === undefined) {
-      this._content = "";
-    } else if (
-      val instanceof ArrayBuffer ||
-      ArrayBuffer.isView(val) ||
-      (typeof Buffer !== "undefined" && Buffer.isBuffer(val))
-    ) {
-      this._content = val;
-    } else if (typeof val === "object" && !(val instanceof String)) {
-      this._content = JSON.stringify(val);
-    } else {
-      this._content = String(val);
-    }
+    this._content = val;
   }
 
   get rawContent(): any {
@@ -130,6 +141,10 @@ export class ApigeeRequest {
   setQueryParam(name: string, value: string): void {
     this.queryParams[name] = value;
   }
+
+  removeQueryParam(name: string): void {
+    delete this.queryParams[name];
+  }
 }
 
 export class ApigeeResponse {
@@ -144,47 +159,26 @@ export class ApigeeResponse {
     for (const [k, v] of Object.entries(headers)) {
       this.headers[k.toLowerCase()] = v;
     }
-    this.content = content;
+    this._content = content;
   }
 
   get content(): any {
-    const raw = this._content;
-    if (
-      raw instanceof ArrayBuffer ||
-      ArrayBuffer.isView(raw) ||
-      (typeof Buffer !== "undefined" && Buffer.isBuffer(raw))
-    ) {
-      return raw;
+    if (this._content && typeof this._content === "object" && !(this._content instanceof Uint8Array || this._content instanceof ArrayBuffer)) {
+      const obj = this._content;
+      return {
+        ...obj,
+        toString: () => JSON.stringify(obj),
+        valueOf: () => JSON.stringify(obj),
+        get asJSON() {
+          return obj;
+        },
+      };
     }
-    const strObj = new String(raw);
-    Object.defineProperty(strObj, "asJSON", {
-      get: () => {
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return {};
-        }
-      },
-      configurable: true,
-      enumerable: false,
-    });
-    return strObj;
+    return this._content;
   }
 
   set content(val: any) {
-    if (val === null || val === undefined) {
-      this._content = "";
-    } else if (
-      val instanceof ArrayBuffer ||
-      ArrayBuffer.isView(val) ||
-      (typeof Buffer !== "undefined" && Buffer.isBuffer(val))
-    ) {
-      this._content = val;
-    } else if (typeof val === "object" && !(val instanceof String)) {
-      this._content = JSON.stringify(val);
-    } else {
-      this._content = String(val);
-    }
+    this._content = val;
   }
 
   get rawContent(): any {
@@ -216,6 +210,11 @@ export class ApigeeContext {
     this.variables = { ...initialVariables };
 
     // Standard Apigee variables initialization
+    this.variables["organization.name"] = process.env.APIGEE_ORG || "bungee-org";
+    this.variables["environment.name"] = process.env.APIGEE_ENV || "local";
+    this.variables["client.received.start.timestamp"] = Date.now();
+    this.variables["system.timestamp"] = Date.now();
+
     if (req) {
       try {
         const urlObj = new URL(req.url);
@@ -223,6 +222,7 @@ export class ApigeeContext {
         this.variables["proxy.url"] = req.url;
         this.variables["request.verb"] = req.method;
         this.variables["request.path"] = urlObj.pathname;
+        this.variables["request.header.host"] = urlObj.host;
       } catch {
         // ignore
       }
@@ -236,7 +236,7 @@ export class ApigeeContext {
     if (name === "response.content") {
       return this.response.content;
     }
-    if (name === "response.status.code" || name === "response.status") {
+    if (name === "response.status.code" || name === "response.status" || name === "message.status.code") {
       return this.response.status;
     }
     if (name.startsWith("response.header.")) {
@@ -253,11 +253,20 @@ export class ApigeeContext {
     }
     if (name.startsWith("request.header.")) {
       const headerName = name.slice("request.header.".length);
-      return this.request.getHeader(headerName);
+      const val = this.request.getHeader(headerName);
+      if (val !== undefined) return val;
+      return this.variables[name];
     }
     if (name.startsWith("request.queryparam.")) {
       const paramName = name.slice("request.queryparam.".length);
-      return this.request.getQueryParam(paramName);
+      const val = this.request.getQueryParam(paramName);
+      if (val !== undefined) return val;
+      return this.variables[name];
+    }
+
+    // Fault variables
+    if (name === "fault.name") {
+      return this.fault?.name || this.variables["fault.name"];
     }
 
     // Direct match in variables
@@ -284,14 +293,18 @@ export class ApigeeContext {
       this.variables[name] = value;
       return;
     }
-    if (name === "response.status.code" || name === "response.status") {
+    if (name === "response.status.code" || name === "response.status" || name === "message.status.code") {
       this.response.status = Number(value);
       this.variables[name] = Number(value);
       return;
     }
     if (name.startsWith("response.header.")) {
       const headerName = name.slice("response.header.".length);
-      this.response.setHeader(headerName, String(value));
+      if (value === null || value === undefined) {
+        this.response.removeHeader(headerName);
+      } else {
+        this.response.setHeader(headerName, String(value));
+      }
       this.variables[name] = value;
       return;
     }
@@ -303,15 +316,27 @@ export class ApigeeContext {
     }
     if (name.startsWith("request.header.")) {
       const headerName = name.slice("request.header.".length);
-      this.request.setHeader(headerName, String(value));
+      if (value === null || value === undefined) {
+        this.request.removeHeader(headerName);
+      } else {
+        this.request.setHeader(headerName, String(value));
+      }
       this.variables[name] = value;
       return;
     }
     if (name.startsWith("request.queryparam.")) {
       const paramName = name.slice("request.queryparam.".length);
-      this.request.setQueryParam(paramName, String(value));
+      if (value === null || value === undefined) {
+        this.request.removeQueryParam(paramName);
+      } else {
+        this.request.setQueryParam(paramName, String(value));
+      }
       this.variables[name] = value;
       return;
+    }
+
+    if (name === "fault.name" && this.fault) {
+      this.fault.name = value;
     }
 
     this.variables[name] = value;
@@ -339,4 +364,6 @@ export class Apigee {
   static verifyApiKey = verifyApiKey;
   static dataCapture = dataCapture;
   static raiseFault = raiseFault;
+  static oasValidation = oasValidation;
+  static evaluateCondition = evaluateCondition;
 }

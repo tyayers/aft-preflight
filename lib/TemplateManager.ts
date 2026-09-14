@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 
-const TEMPLATES_DIR = "./templates";
+const TEMPLATES_DIR = "./data/templates";
 
 export interface TemplateInfo {
   id: string;      // "apigee-mock"

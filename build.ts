@@ -3,7 +3,7 @@ import path from "node:path";
 import yaml from "js-yaml";
 
 const PROXIES_DIR = "./proxies";
-const TEMPLATES_DIR = "./templates";
+const TEMPLATES_DIR = "./data/templates";
 const INDEX_FILE = "./index.ts";
 
 function toArray<T>(item: T | T[] | undefined): T[] {
@@ -407,40 +407,50 @@ function toPascalCase(str: string): string {
     .replace(/[^a-zA-Z0-9]/g, "");
 }
 
-// 1. Cleanup / ensure proxies directory
-if (fs.existsSync(PROXIES_DIR)) {
-  fs.readdirSync(PROXIES_DIR).forEach((file) => {
-    fs.unlinkSync(path.join(PROXIES_DIR, file));
-  });
-} else {
-  fs.mkdirSync(PROXIES_DIR, { recursive: true });
-}
+export async function runBuild(): Promise<{ success: boolean; count: number; proxies: string[] }> {
+  // 1. Cleanup / ensure proxies directory
+  if (fs.existsSync(PROXIES_DIR)) {
+    fs.readdirSync(PROXIES_DIR).forEach((file) => {
+      fs.unlinkSync(path.join(PROXIES_DIR, file));
+    });
+  } else {
+    fs.mkdirSync(PROXIES_DIR, { recursive: true });
+  }
 
-// 2. Prepare to rebuild index.ts
-let indexImports = "";
-let indexRoutes = "";
+  // 2. Prepare to rebuild index.ts
+  let indexImports = "";
+  let indexRoutes = "";
+  const compiledProxies: string[] = [];
+  const importedFunctions = new Set<string>();
 
-// 3. Process each yaml file in templates
-const templates = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
+  // 3. Process each yaml file in templates
+  if (!fs.existsSync(TEMPLATES_DIR)) {
+    fs.mkdirSync(TEMPLATES_DIR, { recursive: true });
+  }
+  const templates = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
 
-for (const templateFile of templates) {
-  const templateBaseName = path.basename(templateFile, path.extname(templateFile));
-  const content = fs.readFileSync(path.join(TEMPLATES_DIR, templateFile), "utf8");
-  const data = yaml.load(content) as any;
+  for (const templateFile of templates) {
+    const templateBaseName = path.basename(templateFile, path.extname(templateFile));
+    const content = fs.readFileSync(path.join(TEMPLATES_DIR, templateFile), "utf8");
+    const data = yaml.load(content) as any;
 
-  if (!data) continue;
+    if (!data) continue;
 
-  const endpoints = data.endpoints || (data.defaultEndpoint ? [data.defaultEndpoint] : []);
-  if (!endpoints.length) continue;
+    const endpoints = data.endpoints || (data.defaultEndpoint ? [data.defaultEndpoint] : []);
+    if (!endpoints.length) continue;
 
-  for (const endpoint of endpoints) {
-    const basePath = endpoint.basePath;
+    for (let epIndex = 0; epIndex < endpoints.length; epIndex++) {
+      const endpoint = endpoints[epIndex];
+      let basePath = endpoint.basePath || `/${templateBaseName}`;
+      if (!basePath.startsWith("/")) basePath = "/" + basePath;
+      if (basePath.endsWith("/") && basePath.length > 1) basePath = basePath.slice(0, -1);
 
-    // Determine filenames and class names
-    const fileBaseName = templateBaseName;
-    const fileName = `${fileBaseName}.ts`;
-    const className = `${toPascalCase(templateBaseName)}Proxy`;
-    const functionName = `${templateBaseName.replace(/[^a-zA-Z0-9]/g, "_")}Proxy`;
+      // Determine filenames and class names
+      const endpointSuffix = endpoints.length > 1 ? `_${endpoint.name || epIndex}` : "";
+      const fileBaseName = `${templateBaseName}${endpointSuffix}`;
+      const fileName = `${fileBaseName}.ts`;
+      const className = `${toPascalCase(templateBaseName)}${toPascalCase(endpointSuffix)}Proxy`;
+      const functionName = `${templateBaseName.replace(/[^a-zA-Z0-9]/g, "_")}${endpointSuffix.replace(/[^a-zA-Z0-9]/g, "_")}Proxy`;
 
     // Collect flow step references with conditions
     interface FlowStep {
@@ -859,8 +869,16 @@ export async function ${functionName}(req: Request): Promise<Response> {
     fs.writeFileSync(path.join(PROXIES_DIR, fileName), proxyFileContent);
 
     // Add to index info
-    indexImports += `import { ${functionName} } from "./proxies/${fileBaseName}";\n`;
-    indexRoutes += `    "${basePath}/*": ${functionName},\n    "${basePath}": ${functionName},\n`;
+    if (!importedFunctions.has(functionName)) {
+      importedFunctions.add(functionName);
+      indexImports += `import { ${functionName} } from "./proxies/${fileBaseName}";\n`;
+    }
+    if (basePath === "/") {
+      indexRoutes += `    "/*": ${functionName},\n    "/": ${functionName},\n`;
+    } else {
+      indexRoutes += `    "${basePath}/*": ${functionName},\n    "${basePath}": ${functionName},\n`;
+    }
+    compiledProxies.push(functionName);
   }
 }
 
@@ -868,6 +886,9 @@ export async function ${functionName}(req: Request): Promise<Response> {
 const indexContent = `import { spawn } from "node:child_process";
 import yaml from "js-yaml";
 import { TemplateManager } from "./lib/TemplateManager";
+import { DataManager } from "./lib/DataManager";
+import { DeploymentManager } from "./lib/DeploymentManager";
+import { runBuild } from "./build";
 ${indexImports}
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -875,18 +896,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "*",
 };
 
-async function parseTemplateRequestBody(req: Request): Promise<{ name?: string; content: string }> {
-  const contentType = req.headers.get("content-type") || "";
-  const rawText = await req.text();
+// Initialize DataManager on startup to load products, users, and KVM from data/
+await DataManager.initialize();
 
+async function parseTemplateRequestBody(rawText: string, contentType: string = ""): Promise<{ name?: string; content: string; isDeployment?: boolean }> {
   if (!rawText || !rawText.trim()) {
     throw new Error("Empty request body");
+  }
+
+  if (DeploymentManager.isDeployment(rawText)) {
+    return { content: rawText, isDeployment: true };
   }
 
   if (contentType.includes("application/json") || rawText.trim().startsWith("{")) {
     try {
       const parsed = JSON.parse(rawText);
       if (parsed && typeof parsed === "object") {
+        if (DeploymentManager.isDeployment(parsed)) {
+          return { content: rawText, isDeployment: true };
+        }
         if (typeof parsed.content === "string") {
           const name = parsed.name || parsed.id;
           return { name, content: parsed.content };
@@ -907,6 +935,9 @@ async function parseTemplateRequestBody(req: Request): Promise<{ name?: string; 
   try {
     const doc = yaml.load(rawText) as any;
     if (doc && typeof doc === "object") {
+      if (DeploymentManager.isDeployment(doc)) {
+        return { content: rawText, isDeployment: true };
+      }
       name = doc.name || doc.id;
     }
   } catch {
@@ -934,13 +965,49 @@ ${indexRoutes}  },
     if (url.pathname === "/rebuild" && req.method === "POST") {
       console.log("Rebuild requested. Running build.ts...");
       try {
-        const proc = Bun.spawn(["./bun", "run", "build.ts"]);
-
-        return Response.json({ success: true, message: "Build successful. Service restarted!" }, { headers: corsHeaders });
+        const buildRes = await runBuild();
+        return Response.json({ success: true, message: "Build successful. Service restarted!", ...buildRes }, { headers: corsHeaders });
       } catch (err: any) {
         console.error("Rebuild error:", err);
         return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
       }
+    }
+
+    // Deployments endpoint (POST deployment YAML or JSON)
+    if ((url.pathname === "/api/deployments" || url.pathname === "/api/deployment" || url.pathname === "/deploy") && req.method === "POST") {
+      try {
+        const rawText = await req.text();
+        const result = await DeploymentManager.deploy(rawText);
+        return Response.json(result, { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (err: any) {
+        console.error("Deployment error:", err);
+        return Response.json({ success: false, error: err.message }, { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // List deployment status
+    if (url.pathname === "/api/deployments" && req.method === "GET") {
+      return Response.json({
+        lastDeployment: DeploymentManager.getStatus(),
+        products: DataManager.listProducts(),
+        users: DataManager.listUsers(),
+      }, { headers: corsHeaders });
+    }
+
+    // List products
+    if (url.pathname === "/api/products" && req.method === "GET") {
+      return Response.json(DataManager.listProducts(), { headers: corsHeaders });
+    }
+
+    // List users
+    if (url.pathname === "/api/users" && req.method === "GET") {
+      return Response.json(DataManager.listUsers(), { headers: corsHeaders });
+    }
+
+    // List KVM data
+    if (url.pathname === "/api/kvm" && req.method === "GET") {
+      const { globalKvmStore } = await import("./lib/policies/KeyValueMapOperations");
+      return Response.json(globalKvmStore, { headers: corsHeaders });
     }
 
     // List templates
@@ -958,17 +1025,27 @@ ${indexRoutes}  },
       return new Response(content, { headers: { ...corsHeaders, "Content-Type": "text/yaml" } });
     }
 
-    // Create a new template or update
+    // Create a new template or deployment
     if ((url.pathname === "/api/templates" || url.pathname.startsWith("/api/templates/")) && req.method === "POST") {
       try {
         const pathId = url.pathname.startsWith("/api/templates/") ? url.pathname.split("/").pop() : undefined;
-        const parsed = await parseTemplateRequestBody(req);
+        const rawText = await req.text();
+        const parsed = await parseTemplateRequestBody(rawText, req.headers.get("content-type") || "");
+        
+        if (parsed.isDeployment) {
+          const result = await DeploymentManager.deploy(parsed.content);
+          return Response.json(result, { headers: corsHeaders });
+        }
+
         const name = pathId || url.searchParams.get("name") || url.searchParams.get("id") || parsed.name;
         if (!name) {
           return Response.json({ success: false, error: "Missing template name in URL, query parameters, or YAML/JSON body" }, { status: 400, headers: corsHeaders });
         }
         TemplateManager.createOrUpdate(name, parsed.content);
-        return Response.json({ success: true, name }, { headers: corsHeaders });
+        if (url.searchParams.get("deploy") !== "false") {
+          await runBuild();
+        }
+        return Response.json({ success: true, name, deployed: true }, { headers: corsHeaders });
       } catch (err: any) {
         return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
       }
@@ -978,13 +1055,23 @@ ${indexRoutes}  },
     if ((url.pathname === "/api/templates" || url.pathname.startsWith("/api/templates/")) && req.method === "PUT") {
       try {
         const pathId = url.pathname.startsWith("/api/templates/") ? url.pathname.split("/").pop() : undefined;
-        const parsed = await parseTemplateRequestBody(req);
+        const rawText = await req.text();
+        const parsed = await parseTemplateRequestBody(rawText, req.headers.get("content-type") || "");
+
+        if (parsed.isDeployment) {
+          const result = await DeploymentManager.deploy(parsed.content);
+          return Response.json(result, { headers: corsHeaders });
+        }
+
         const name = pathId || url.searchParams.get("name") || url.searchParams.get("id") || parsed.name;
         if (!name) {
           return Response.json({ success: false, error: "Missing template name in URL, query parameters, or YAML/JSON body" }, { status: 400, headers: corsHeaders });
         }
         TemplateManager.createOrUpdate(name, parsed.content);
-        return Response.json({ success: true, name }, { headers: corsHeaders });
+        if (url.searchParams.get("deploy") !== "false") {
+          await runBuild();
+        }
+        return Response.json({ success: true, name, deployed: true }, { headers: corsHeaders });
       } catch (err: any) {
         return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
       }
@@ -997,6 +1084,7 @@ ${indexRoutes}  },
       if (!deleted) {
         return Response.json({ success: false, error: "Template not found" }, { status: 404, headers: corsHeaders });
       }
+      await runBuild();
       return Response.json({ success: true }, { headers: corsHeaders });
     }
 
@@ -1014,6 +1102,15 @@ ${indexRoutes}  },
 console.log(\`Listening on \${server.url}\`);
 `;
 
-fs.writeFileSync(INDEX_FILE, indexContent);
+  fs.writeFileSync(INDEX_FILE, indexContent);
+  return { success: true, count: compiledProxies.length, proxies: compiledProxies };
+}
 
-console.log("Build complete!");
+if (import.meta.main) {
+  runBuild()
+    .then((res) => console.log(`Build complete! Compiled ${res.count} proxies.`))
+    .catch((err) => {
+      console.error("Build failed:", err);
+      process.exit(1);
+    });
+}

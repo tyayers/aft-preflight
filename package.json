@@ -11,6 +11,15 @@
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
-    "js-yaml": "^4.1.1"
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
+    "chalk": "^6.0.0",
+    "google-auth-library": "^11.0.2",
+    "js-yaml": "^4.1.1",
+    "jsonpath-plus": "^10.4.0",
+    "xml-js": "^1.6.11",
+    "yaml": "^2.9.0",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1"
   }
 }

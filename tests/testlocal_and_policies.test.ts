@@ -211,8 +211,8 @@ describe("TestlocalProxy End-to-End Execution", () => {
     });
 
     const res = await testlocalProxy(req);
-    // Since upstream aiplatform.googleapis.com is called with mock credentials, live GCP returns 401/404, or 502 on network fault
-    expect([200, 401, 404, 502]).toContain(res.status);
+    // Since upstream aiplatform.googleapis.com is called with ADC or mock credentials, live GCP returns 401/403/404, or 502 on network fault
+    expect([200, 401, 403, 404, 502]).toContain(res.status);
     mockTargetServer.stop();
   });
 
@@ -232,7 +232,7 @@ describe("TestlocalProxy End-to-End Execution", () => {
     });
 
     const res = await testlocalProxy(req);
-    expect([200, 401, 404, 502]).toContain(res.status);
+    expect([200, 401, 403, 404, 502]).toContain(res.status);
   });
 
   it("executes full end-to-end flow with successful mock target response and data capture", async () => {

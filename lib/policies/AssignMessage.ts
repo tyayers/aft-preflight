@@ -1,4 +1,5 @@
 import type { ApigeeContext } from "../apigee";
+import { getGoogleAccessToken } from "../googleAuth";
 
 export interface AssignVariableConfig {
   name: string;
@@ -97,11 +98,15 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
   // 6. Set Authentication (e.g. GoogleAccessToken)
   if (options.setAuthentication) {
     const headerName = options.setAuthentication.headerName || "Authorization";
-    const googleToken =
-      process.env.GOOGLE_ACCESS_TOKEN ||
-      process.env.GCP_ACCESS_TOKEN ||
-      context.getVariable("request.header.authorization") ||
-      "mock-google-cloud-token";
+    let googleToken = await getGoogleAccessToken();
+    if (!googleToken || googleToken === "mock-google-cloud-token") {
+      googleToken =
+        process.env.GOOGLE_ACCESS_TOKEN ||
+        process.env.GCP_ACCESS_TOKEN ||
+        context.getVariable("request.header.authorization") ||
+        googleToken ||
+        "mock-google-cloud-token";
+    }
     const bearerVal = googleToken.startsWith("Bearer ") ? googleToken : `Bearer ${googleToken}`;
     if (assignTo === "request") {
       context.request.setHeader(headerName, bearerVal);

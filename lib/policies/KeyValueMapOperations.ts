@@ -40,18 +40,30 @@ export interface KeyValueMapOptions {
   scope?: string;
 }
 
+import * as YAML from "yaml";
+
 /**
- * Load local file-backed KVM entries if exists (./kvm/{mapIdentifier}.json)
+ * Load local file-backed KVM entries if exists (./data/kvm/{mapIdentifier}.json, .yaml, or ./kvm/)
  */
 function loadLocalFileKvm(mapIdentifier: string): Record<string, any> | null {
-  try {
-    const kvmPath = path.join(process.cwd(), "kvm", `${mapIdentifier}.json`);
-    if (fs.existsSync(kvmPath)) {
-      const data = fs.readFileSync(kvmPath, "utf8");
-      return JSON.parse(data);
+  const candidatePaths = [
+    path.join(process.cwd(), "data", "kvm", `${mapIdentifier}.json`),
+    path.join(process.cwd(), "data", "kvm", `${mapIdentifier}.yaml`),
+    path.join(process.cwd(), "data", "kvm", `${mapIdentifier}.yml`),
+    path.join(process.cwd(), "data", `${mapIdentifier}.json`),
+    path.join(process.cwd(), "data", `${mapIdentifier}.yaml`),
+    path.join(process.cwd(), "kvm", `${mapIdentifier}.json`),
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const data = fs.readFileSync(p, "utf8");
+        return p.endsWith(".json") ? JSON.parse(data) : YAML.parse(data);
+      } catch {
+        // continue
+      }
     }
-  } catch {
-    // Ignore file read error in local mode
   }
   return null;
 }

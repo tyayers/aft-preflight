@@ -3,7 +3,7 @@
 # install dependencies
 bun install
 
-# build proxies from templates dir
+# build proxies from data/templates dir
 bun run build.ts
 
 # start proxies

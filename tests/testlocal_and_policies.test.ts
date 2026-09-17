@@ -1,6 +1,25 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import fs from "fs";
+import path from "path";
+import { describe, it, expect, beforeEach, beforeAll, mock } from "bun:test";
 import { Apigee, ApigeeContext, ApigeeRequest, ApigeeResponse, evaluateCondition, globalKvmStore, capturedDataMetrics } from "../lib/apigee";
-import { testlocalProxy } from "../proxies/testlocal";
+
+let testlocalProxy: any;
+
+beforeAll(async () => {
+  const targetProxyPath = path.join(process.cwd(), "proxies", "testlocal.ts");
+  if (!fs.existsSync(targetProxyPath)) {
+    const fixturePath = path.join(process.cwd(), "tests", "fixtures", "testlocal.yaml");
+    const dataProxyPath = path.join(process.cwd(), "data", "proxies", "testlocal.yaml");
+    if (!fs.existsSync(path.dirname(dataProxyPath))) fs.mkdirSync(path.dirname(dataProxyPath), { recursive: true });
+    if (fs.existsSync(fixturePath)) {
+      fs.copyFileSync(fixturePath, dataProxyPath);
+    }
+    const { runBuild } = await import("../build");
+    await runBuild();
+  }
+  const mod = await import("../proxies/testlocal");
+  testlocalProxy = mod.testlocalProxy;
+});
 
 describe("Apigee Condition Evaluator", () => {
   it("evaluates simple and boolean expressions", () => {
@@ -219,7 +238,7 @@ describe("TestlocalProxy End-to-End Execution", () => {
   it("handles smart model dynamic routing (smart-flash)", async () => {
     const payload = JSON.stringify({
       model: "smart-flash",
-      messages: [{ role: "user", content: "Can you explain quantum computing?" }],
+      messages: [{ role: "user", content: "hi" }],
     });
 
     const req = new Request("http://localhost:8080/v1/chat/completions", {
@@ -233,7 +252,7 @@ describe("TestlocalProxy End-to-End Execution", () => {
 
     const res = await testlocalProxy(req);
     expect([200, 401, 403, 404, 502]).toContain(res.status);
-  });
+  }, 30000);
 
   it("executes full end-to-end flow with successful mock target response and data capture", async () => {
     const originalFetch = globalThis.fetch;

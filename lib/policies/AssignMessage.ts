@@ -38,7 +38,10 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
   if (!options) return;
 
   const ignoreUnresolved = options.ignoreUnresolvedVariables ?? true;
-  const assignTo = (options.assignTo || "response").toLowerCase();
+  const assignTo = (
+    options.assignTo ||
+    (options.setAuthentication ? "request" : options.setStatusCode !== undefined ? "response" : "request")
+  ).toLowerCase();
 
   // 1. Set Headers
   if (options.setHeaders) {
@@ -46,11 +49,14 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
       const resolvedVal = context.resolveVariables(val, ignoreUnresolved);
       if (assignTo === "request") {
         context.request.setHeader(name, resolvedVal);
+        context.setVariable(`request.header.${name.toLowerCase()}`, resolvedVal);
         if (options.setStatusCode !== undefined || context.fault) {
           context.response.setHeader(name, resolvedVal);
+          context.setVariable(`response.header.${name.toLowerCase()}`, resolvedVal);
         }
       } else if (assignTo === "response") {
         context.response.setHeader(name, resolvedVal);
+        context.setVariable(`response.header.${name.toLowerCase()}`, resolvedVal);
       } else {
         context.setVariable(`${options.assignTo}.header.${name.toLowerCase()}`, resolvedVal);
       }
@@ -63,8 +69,10 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
       const resolvedVal = context.resolveVariables(val, ignoreUnresolved);
       if (assignTo === "request") {
         context.request.setHeader(name, resolvedVal);
+        context.setVariable(`request.header.${name.toLowerCase()}`, resolvedVal);
       } else {
         context.response.setHeader(name, resolvedVal);
+        context.setVariable(`response.header.${name.toLowerCase()}`, resolvedVal);
       }
     }
   }
@@ -74,8 +82,10 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
     for (const name of options.removeHeaders) {
       if (assignTo === "request") {
         context.request.removeHeader(name);
+        delete context.variables[`request.header.${name.toLowerCase()}`];
       } else {
         context.response.removeHeader(name);
+        delete context.variables[`response.header.${name.toLowerCase()}`];
       }
     }
   }
@@ -108,10 +118,12 @@ export async function assignMessage(options: AssignMessageOptions, context: Apig
         "mock-google-cloud-token";
     }
     const bearerVal = googleToken.startsWith("Bearer ") ? googleToken : `Bearer ${googleToken}`;
-    if (assignTo === "request") {
-      context.request.setHeader(headerName, bearerVal);
-    } else {
+    if (assignTo === "response") {
       context.response.setHeader(headerName, bearerVal);
+      context.setVariable(`response.header.${headerName.toLowerCase()}`, bearerVal);
+    } else {
+      context.request.setHeader(headerName, bearerVal);
+      context.setVariable(`request.header.${headerName.toLowerCase()}`, bearerVal);
     }
   }
 

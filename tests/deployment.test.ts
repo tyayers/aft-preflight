@@ -13,8 +13,8 @@ describe("Deployment Manager & Native Bun Deployment Suite", () => {
     await DataManager.initialize();
   });
 
-  afterAll(() => {
-    // Clean up test created template files if any
+  afterAll(async () => {
+    // Clean up test created template files, proxies, products, users, deployments
     const testTemplates = [
       "test-full-deployment-api.yaml",
       "test-feature-proxy.yaml",
@@ -24,7 +24,31 @@ describe("Deployment Manager & Native Bun Deployment Suite", () => {
     for (const t of testTemplates) {
       const p = path.join(process.cwd(), "data", "templates", t);
       if (fs.existsSync(p)) fs.unlinkSync(p);
+      const prx = path.join(process.cwd(), "data", "proxies", t);
+      if (fs.existsSync(prx)) fs.unlinkSync(prx);
     }
+    const testProducts = ["ecommerce-product.yaml"];
+    for (const pr of testProducts) {
+      const p = path.join(process.cwd(), "data", "products", pr);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    const testUsers = ["alice_developer.yaml"];
+    for (const u of testUsers) {
+      const p = path.join(process.cwd(), "data", "users", u);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    const testDeployments = [
+      "ecommerce-deployment.yaml",
+      "imported-features-deployment.yaml",
+      "single-feature-deployment.yaml",
+      "converted-proxy-deployment.yaml",
+      "apigee-x-org-deployment.yaml",
+    ];
+    for (const d of testDeployments) {
+      const p = path.join(process.cwd(), "data", "deployments", d);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    await runBuild();
   });
 
   it("detects deployment documents vs regular proxies", () => {
@@ -255,6 +279,35 @@ templates:
     // Since mock-apigee-org is not a real Apigee X org, live fetch records error but allows deployment of included proxies
     expect(result.deployedProxies.some((p) => p.name === "test-org-imported-proxy")).toBe(true);
     expect(result.deploymentName).toBe("apigee-x-org-deployment");
+  }, 15000);
+
+  it("extracts and registers tests included in deployment YAML documents", async () => {
+    const deploymentWithTests = `
+name: deployment-with-tests
+proxies:
+  - name: test-proxy-with-tests
+    endpoints:
+      - basePath: /v1/test-target
+        routes:
+          - name: default
+            target: default
+tests:
+  - name: test-status-200
+    proxy: test-proxy-with-tests
+    verb: POST
+    headers:
+      x-api-key: starter-app-key-123
+    payload: '{"hello":"world"}'
+    assertions:
+      - status.code == 200
+`;
+    const result = await DeploymentManager.deploy(deploymentWithTests, { build: false });
+    expect(result.importedTests).toContain("test-status-200");
+
+    const proxyTests = DataManager.getTestsForProxy("test-proxy-with-tests");
+    expect(proxyTests.length).toBeGreaterThanOrEqual(1);
+    expect(proxyTests[0].name).toBe("test-status-200");
+    expect(proxyTests[0].assertions).toContain("status.code == 200");
   });
 
   it("rebuild compiles all proxies and generates updated index.ts with deployment endpoints", async () => {
@@ -268,5 +321,5 @@ templates:
     expect(indexContent).toContain("DataManager.initialize");
     expect(indexContent).toContain("/api/products");
     expect(indexContent).toContain("/api/users");
-  });
+  }, 15000);
 });

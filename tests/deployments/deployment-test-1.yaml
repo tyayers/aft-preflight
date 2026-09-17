@@ -140,3 +140,21 @@ users:
             - ai-premium-package
           scopes: []
           attributes: []
+tests:
+  - name: completions-test1
+    proxy: REST-AI-Completions
+    verb: POST
+    headers:
+      x-api-key: starter-app-key-123
+    payload: |
+      {
+        "model": "google/gemini-3.8-flash",
+        "stream": true,
+        "max_tokens": 100,
+        "messages": [{
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }]
+      }
+    assertions:
+      - status.code == 200

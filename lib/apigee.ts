@@ -23,6 +23,8 @@ import {
   capturedDataMetrics,
 } from "./policies";
 import { evaluateCondition } from "./condition";
+import { getCachedProjectId } from "./googleAuth";
+import { TraceManager, type ExecutionTrace, type TraceStep } from "./tracer";
 
 // Extend String prototype to support Apigee's .asJSON accessor on JSON strings
 declare global {
@@ -68,6 +70,9 @@ export {
   globalKvmStore,
   globalResourceStore,
   capturedDataMetrics,
+  TraceManager,
+  type ExecutionTrace,
+  type TraceStep,
 };
 
 export class ApigeeRequest {
@@ -203,14 +208,17 @@ export class ApigeeContext {
   request: ApigeeRequest;
   response: ApigeeResponse;
   fault: any = null;
+  proxyName: string = "proxy";
+  trace: ExecutionTrace | null = null;
 
-  constructor(req?: Request, initialVariables: Record<string, any> = {}) {
+  constructor(req?: Request, initialVariables: Record<string, any> = {}, proxyName: string = "proxy") {
+    this.proxyName = proxyName;
     this.request = new ApigeeRequest(req);
     this.response = new ApigeeResponse();
     this.variables = { ...initialVariables };
 
     // Standard Apigee variables initialization
-    this.variables["organization.name"] = process.env.APIGEE_ORG || "bungee-org";
+    this.variables["organization.name"] = getCachedProjectId();
     this.variables["environment.name"] = process.env.APIGEE_ENV || "local";
     this.variables["client.received.start.timestamp"] = Date.now();
     this.variables["system.timestamp"] = Date.now();
@@ -227,6 +235,157 @@ export class ApigeeContext {
         // ignore
       }
     }
+
+    if (TraceManager.isTracingEnabled()) {
+      this.trace = TraceManager.createTrace(req, this.proxyName);
+    }
+  }
+
+  public setProxyName(name: string): void {
+    this.proxyName = name;
+    if (this.trace) {
+      this.trace.proxyName = name;
+    }
+  }
+
+  public async traceStep(
+    name: string,
+    type: string,
+    flow: string,
+    fn: () => Promise<void>
+  ): Promise<void> {
+    if (!this.trace) {
+      return await fn();
+    }
+
+    const startTime = Date.now();
+    const stepId = TraceManager.generateSpanId();
+    try {
+      await fn();
+      const endTime = Date.now();
+      const durationMs = Math.max(0.05, endTime - startTime);
+      this.trace.steps.push({
+        id: stepId,
+        name,
+        type,
+        flow,
+        startTime,
+        endTime,
+        durationMs,
+        status: "SUCCESS",
+        variablesSnapshot: this.getTraceVariablesSnapshot(),
+      });
+    } catch (err: any) {
+      const endTime = Date.now();
+      const durationMs = Math.max(0.05, endTime - startTime);
+      this.trace.steps.push({
+        id: stepId,
+        name,
+        type,
+        flow,
+        startTime,
+        endTime,
+        durationMs,
+        status: "FAULT",
+        error: err?.message || String(err),
+        variablesSnapshot: this.getTraceVariablesSnapshot(),
+      });
+      throw err;
+    }
+  }
+
+  public recordSkippedStep(
+    name: string,
+    type: string,
+    flow: string,
+    condition?: string
+  ): void {
+    if (!this.trace) return;
+    const now = Date.now();
+    this.trace.steps.push({
+      id: TraceManager.generateSpanId(),
+      name,
+      type,
+      flow,
+      condition,
+      conditionResult: false,
+      startTime: now,
+      endTime: now,
+      durationMs: 0,
+      status: "SKIPPED",
+    });
+  }
+
+  public recordTargetCall(targetInfo: {
+    name?: string;
+    url?: string;
+    verb?: string;
+    status?: number;
+    durationMs?: number;
+    requestHeaders?: Record<string, string>;
+    responseHeaders?: Record<string, string>;
+  }): void {
+    if (!this.trace) return;
+    this.trace.target = { ...targetInfo };
+  }
+
+  public finalizeTrace(): ExecutionTrace | null {
+    if (!this.trace) return null;
+    this.trace.clientSentTime = Date.now();
+    this.trace.durationMs = Math.max(0.1, this.trace.clientSentTime - this.trace.clientReceivedTime);
+    this.trace.response.status = this.response.status;
+    this.trace.response.statusText = this.response.statusText;
+    this.trace.response.headers = { ...this.response.headers };
+
+    if (typeof this.response.content === "string") {
+      this.trace.response.body = this.response.content.length > 10000
+        ? this.response.content.slice(0, 10000) + "... [truncated]"
+        : this.response.content;
+    }
+    if (typeof this.request.content === "string") {
+      this.trace.request.body = this.request.content.length > 10000
+        ? this.request.content.slice(0, 10000) + "... [truncated]"
+        : this.request.content;
+    }
+
+    if (this.fault) {
+      this.trace.fault = {
+        name: this.fault.name || "Fault",
+        status: this.fault.status || (this.response.status !== 200 ? this.response.status : 500),
+        error: this.fault.error || String(this.fault),
+      };
+    }
+
+    this.trace.variables = { ...this.variables };
+    TraceManager.recordTrace(this.trace);
+    this.response.setHeader("x-bungee-trace-id", this.trace.id);
+    return this.trace;
+  }
+
+  private getTraceVariablesSnapshot(): Record<string, any> {
+    const snapshot: Record<string, any> = {};
+    const keys = [
+      "request.verb",
+      "request.path",
+      "target.url",
+      "target.route",
+      "response.status.code",
+      "ai.model",
+      "ai.rawModelName",
+      "ai.provider",
+      "ai.targetRoute",
+      "verifyapikey.VA-VerifyKey.apiproduct.name",
+      "verifyapikey.VA-VerifyKey.developer.app.name",
+      "verifyapikey.VA-VerifyKey.developer.email",
+      "fault.name",
+    ];
+
+    for (const k of keys) {
+      if (this.variables[k] !== undefined) {
+        snapshot[k] = this.variables[k];
+      }
+    }
+    return snapshot;
   }
 
   getVariable(name: string): any {

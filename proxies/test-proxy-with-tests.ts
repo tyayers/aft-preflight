@@ -21,7 +21,7 @@ const print = console.log;
 DataManager.initializeSync();
 
 
-export class TestFeatureProxyProxy {
+export class TestProxyWithTestsProxy {
   constructor() {
     DataManager.initializeSync();
   }
@@ -34,7 +34,7 @@ export class TestFeatureProxyProxy {
       });
     }
 
-    const context = new ApigeeContext(req, {}, "test-feature-proxy");
+    const context = new ApigeeContext(req, {}, "test-proxy-with-tests");
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       const contentType = req.headers.get("content-type") || "";
@@ -85,8 +85,8 @@ export class TestFeatureProxyProxy {
   }
 }
 
-export const test_feature_proxyInstance = new TestFeatureProxyProxy();
+export const test_proxy_with_testsInstance = new TestProxyWithTestsProxy();
 
-export async function test_feature_proxyProxy(req: Request): Promise<Response> {
-  return test_feature_proxyInstance.handle(req);
+export async function test_proxy_with_testsProxy(req: Request): Promise<Response> {
+  return test_proxy_with_testsInstance.handle(req);
 }

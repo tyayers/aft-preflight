@@ -1,0 +1,16 @@
+# Files and directories to ignore when uploading source to Google Cloud Run
+.gcloudignore
+.git/
+.gitignore
+node_modules/
+tests/
+coverage/
+*.log
+.env*
+.cache/
+.DS_Store
+
+# Explicitly ensure binary and static assets are included
+!aft-testpilot
+!public/**
+!data/**

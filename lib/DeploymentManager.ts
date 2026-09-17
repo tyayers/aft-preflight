@@ -22,6 +22,7 @@ export interface DeploymentResult {
   importedProducts: string[];
   importedUsers: string[];
   importedKvm: string[];
+  importedTests?: string[];
   errors?: string[];
   timestamp: string;
 }
@@ -53,8 +54,259 @@ export class DeploymentManager {
     if (obj.type === "deployment") return true;
     if (Array.isArray(obj.templates) || Array.isArray(obj.features) || Array.isArray(obj.proxies)) return true;
     if (Array.isArray(obj.products) && (Array.isArray(obj.users) || obj.templates || obj.proxies)) return true;
+    if (Array.isArray(obj.tests)) return true;
 
     return false;
+  }
+
+  /**
+   * Compiles all deployment files in data/deployments/ into proxy YAMLs in data/proxies/
+   */
+  public static async generateProxiesFromDeployments(): Promise<string[]> {
+    const deploymentsDir = DataManager.deploymentsDir;
+    if (!fs.existsSync(deploymentsDir)) return [];
+
+    const files = fs
+      .readdirSync(deploymentsDir)
+      .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".json"));
+    const generatedProxies: string[] = [];
+
+    const aftService = new ApigeeTemplaterService();
+    const converter = new ApigeeConverter();
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(deploymentsDir, file);
+        const raw = fs.readFileSync(filePath, "utf8");
+        let doc = file.endsWith(".json") ? JSON.parse(raw) : (YAML.parse(raw) as any);
+        if (doc && doc.deployment) doc = doc.deployment;
+        if (!doc) continue;
+
+        const parameters = doc.parameters || {};
+        const proxiesToDeploy: { proxy: Proxy; source: "template" | "feature" | "proxy" }[] = [];
+
+        // 1. Extract and save Products from deployment
+        const rawProducts = doc.products || (doc.product ? [doc.product] : []);
+        for (const prodItem of rawProducts) {
+          try {
+            let product: Product | undefined;
+            if (typeof prodItem === "object" && prodItem !== null) {
+              product = prodItem as Product;
+            } else if (typeof prodItem === "string") {
+              product = await aftService.productGet(prodItem.trim());
+            }
+            if (product && product.name) {
+              DataManager.saveProduct(product);
+            }
+          } catch (e: any) {
+            console.warn(`[DeploymentManager] Error extracting product ${prodItem}:`, e.message);
+          }
+        }
+
+        // 2. Extract and save Users from deployment
+        const rawUsers = doc.users || (doc.user ? [doc.user] : []);
+        for (const userItem of rawUsers) {
+          try {
+            let user: User | undefined;
+            if (typeof userItem === "object" && userItem !== null) {
+              user = userItem as User;
+            } else if (typeof userItem === "string") {
+              user = await aftService.userGet(userItem.trim());
+            }
+            if (user) {
+              DataManager.saveUser(user);
+            }
+          } catch (e: any) {
+            console.warn(`[DeploymentManager] Error extracting user ${userItem}:`, e.message);
+          }
+        }
+
+        // 3. Extract and save KVM from deployment
+        const rawKvm = doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
+        if (rawKvm && typeof rawKvm === "object") {
+          for (const [mapId, mapData] of Object.entries(rawKvm)) {
+            if (mapData && typeof mapData === "object") {
+              DataManager.saveKvm(mapId, mapData as Record<string, any>);
+            }
+          }
+        }
+
+        // 3b. Extract and save Tests from deployment
+        const rawTests = doc.tests || (doc.test ? [doc.test] : []);
+        for (const testItem of rawTests) {
+          if (testItem && typeof testItem === "object" && testItem.name) {
+            DataManager.saveTest({
+              name: testItem.name,
+              proxy: testItem.proxy || "",
+              verb: (testItem.verb || testItem.method || "POST").toUpperCase(),
+              path: testItem.path || "",
+              headers: testItem.headers || {},
+              payload:
+                typeof testItem.payload === "string"
+                  ? testItem.payload
+                  : testItem.body
+                  ? typeof testItem.body === "string"
+                    ? testItem.body
+                    : JSON.stringify(testItem.body, null, 2)
+                  : typeof testItem.payload === "object"
+                  ? JSON.stringify(testItem.payload, null, 2)
+                  : "",
+              assertions: Array.isArray(testItem.assertions)
+                ? testItem.assertions
+                : testItem.assertions
+                ? [testItem.assertions]
+                : ["status.code == 200"],
+              description: testItem.description || "",
+              deploymentFile: file,
+            });
+          }
+        }
+
+        // 4. Process Features
+        const rawFeatures = doc.features || (doc.feature ? [doc.feature] : []);
+        for (const featItem of rawFeatures) {
+          try {
+            let feature: Feature | undefined;
+            if (typeof featItem === "object" && featItem !== null) {
+              feature = featItem as Feature;
+            } else if (typeof featItem === "string") {
+              feature = await aftService.featureGet(featItem);
+            }
+            if (feature) {
+              const proxy = converter.featureToProxy(feature, parameters);
+              if (!proxy.name) proxy.name = feature.name;
+              proxiesToDeploy.push({ proxy, source: "feature" });
+            }
+          } catch (e: any) {
+            console.warn(`[DeploymentManager] Error resolving feature ${featItem}:`, e.message);
+          }
+        }
+
+        // 2. Process Templates
+        const rawTemplates = doc.templates || (doc.template ? [doc.template] : []);
+        for (const tplItem of rawTemplates) {
+          try {
+            let template: Template | undefined;
+            if (typeof tplItem === "object" && tplItem !== null) {
+              template = tplItem as Template;
+            } else if (typeof tplItem === "string") {
+              template = await aftService.templateGet(tplItem);
+            }
+            if (template) {
+              // Save template definition in data/templates/ to preserve feature definitions
+              const templatesDir = DataManager.templatesDir;
+              if (!fs.existsSync(templatesDir)) fs.mkdirSync(templatesDir, { recursive: true });
+              fs.writeFileSync(
+                path.join(templatesDir, `${template.name}.yaml`),
+                YAML.stringify(template, { aliasDuplicateObjects: false }),
+                "utf8"
+              );
+
+              // Resolve any products referenced inside template if not already loaded
+              if (Array.isArray(template.products)) {
+                for (const pName of template.products) {
+                  if (typeof pName === "string" && !DataManager.getProduct(pName)) {
+                    try {
+                      const p = await aftService.productGet(pName);
+                      if (p) DataManager.saveProduct(p);
+                    } catch {}
+                  }
+                }
+              }
+
+              // Resolve any users referenced inside template if not already loaded
+              if (Array.isArray(template.users)) {
+                for (const uName of template.users) {
+                  if (typeof uName === "string" && !DataManager.getUser(uName)) {
+                    try {
+                      const u = await aftService.userGet(uName);
+                      if (u) DataManager.saveUser(u);
+                    } catch {}
+                  }
+                }
+              }
+
+              // Resolve features needed by this template
+              const resolvedFeatures: Feature[] = [];
+              if (Array.isArray(template.features)) {
+                for (const fItem of template.features) {
+                  if (typeof fItem === "object" && fItem !== null) {
+                    resolvedFeatures.push(fItem as Feature);
+                  } else if (typeof fItem === "string") {
+                    const feat = await aftService.featureGet(fItem);
+                    if (feat) {
+                      resolvedFeatures.push(feat);
+                    }
+                  }
+                }
+              }
+
+              const proxy = converter.templateToProxy(template, resolvedFeatures, parameters);
+              if (!proxy.name) proxy.name = template.name;
+              proxiesToDeploy.push({ proxy, source: "template" });
+            }
+          } catch (e: any) {
+            console.warn(`[DeploymentManager] Error resolving template ${tplItem}:`, e.message);
+          }
+        }
+
+        // 3. Process Proxies
+        const rawProxies = doc.proxies || (doc.proxy ? [doc.proxy] : []);
+        for (const prxItem of rawProxies) {
+          try {
+            let proxy: Proxy | undefined;
+            if (typeof prxItem === "object" && prxItem !== null) {
+              proxy = prxItem as Proxy;
+            } else if (typeof prxItem === "string") {
+              const trimmed = prxItem.trim();
+              proxy = await aftService.proxyGet(trimmed);
+            }
+            if (proxy) {
+              proxiesToDeploy.push({ proxy, source: "proxy" });
+            }
+          } catch (e: any) {
+            console.warn(`[DeploymentManager] Error resolving proxy ${prxItem}:`, e.message);
+          }
+        }
+
+        // 4. Save generated proxy YAMLs into data/proxies/
+        const proxiesDir = DataManager.proxiesDir;
+        if (!fs.existsSync(proxiesDir)) fs.mkdirSync(proxiesDir, { recursive: true });
+
+        for (const item of proxiesToDeploy) {
+          const p = item.proxy;
+          const proxyName = p.name || `proxy-${Date.now()}`;
+
+          if (!p.endpoints || p.endpoints.length === 0) {
+            p.endpoints = [
+              {
+                name: "default",
+                basePath: `/${proxyName}`,
+                routes: [{ name: "default", target: "default" }],
+                flows: [],
+              },
+            ];
+          }
+
+          const yamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
+          const targetFilePath = path.join(proxiesDir, `${proxyName}.yaml`);
+          fs.writeFileSync(targetFilePath, yamlStr, "utf8");
+
+          const templatesDir = DataManager.templatesDir;
+          if (!fs.existsSync(templatesDir)) fs.mkdirSync(templatesDir, { recursive: true });
+          const templateFilePath = path.join(templatesDir, `${proxyName}.yaml`);
+          if (!fs.existsSync(templateFilePath)) {
+            fs.writeFileSync(templateFilePath, yamlStr, "utf8");
+          }
+
+          generatedProxies.push(proxyName);
+        }
+      } catch (err: any) {
+        console.error(`[DeploymentManager] Error generating proxies from deployment ${file}:`, err.message);
+      }
+    }
+
+    return generatedProxies;
   }
 
   /**
@@ -95,6 +347,7 @@ export class DeploymentManager {
     const importedProducts: string[] = [];
     const importedUsers: string[] = [];
     const importedKvm: string[] = [];
+    const importedTests: string[] = [];
     const errors: string[] = [];
 
     let googleToken: string | null = null;
@@ -196,6 +449,38 @@ export class DeploymentManager {
       }
     }
 
+    // 3b. Process Tests
+    const rawTests = doc.tests || (doc.test ? [doc.test] : []);
+    for (const testItem of rawTests) {
+      if (testItem && typeof testItem === "object" && testItem.name) {
+        DataManager.saveTest({
+          name: testItem.name,
+          proxy: testItem.proxy || "",
+          verb: (testItem.verb || testItem.method || "POST").toUpperCase(),
+          path: testItem.path || "",
+          headers: testItem.headers || {},
+          payload:
+            typeof testItem.payload === "string"
+              ? testItem.payload
+              : testItem.body
+              ? typeof testItem.body === "string"
+                ? testItem.body
+                : JSON.stringify(testItem.body, null, 2)
+              : typeof testItem.payload === "object"
+              ? JSON.stringify(testItem.payload, null, 2)
+              : "",
+          assertions: Array.isArray(testItem.assertions)
+            ? testItem.assertions
+            : testItem.assertions
+            ? [testItem.assertions]
+            : ["status.code == 200"],
+          description: testItem.description || "",
+          deploymentFile: deploymentName,
+        });
+        importedTests.push(testItem.name);
+      }
+    }
+
     // List of proxies to write and compile
     const proxiesToDeploy: { proxy: Proxy; source: "template" | "feature" | "proxy" }[] = [];
 
@@ -234,6 +519,11 @@ export class DeploymentManager {
         }
 
         if (template) {
+          // Save template definition in data/templates/ to preserve feature definitions
+          const templatesDir = path.join(process.cwd(), "data", "templates");
+          if (!fs.existsSync(templatesDir)) fs.mkdirSync(templatesDir, { recursive: true });
+          fs.writeFileSync(path.join(templatesDir, `${template.name}.yaml`), YAML.stringify(template, { aliasDuplicateObjects: false }), "utf8");
+
           // Resolve any products referenced inside template
           if (Array.isArray(template.products)) {
             for (const pName of template.products) {
@@ -333,9 +623,17 @@ export class DeploymentManager {
       }
     }
 
-    // 7. Deploy all proxies locally into ./data/templates/
-    const templatesDir = path.join(process.cwd(), "data", "templates");
-    if (!fs.existsSync(templatesDir)) fs.mkdirSync(templatesDir, { recursive: true });
+    // Save deployment document into data/deployments/
+    const deploymentsDir = path.join(process.cwd(), "data", "deployments");
+    if (!fs.existsSync(deploymentsDir)) fs.mkdirSync(deploymentsDir, { recursive: true });
+    try {
+      const depYaml = typeof input === "string" ? input : YAML.stringify(input);
+      fs.writeFileSync(path.join(deploymentsDir, `${deploymentName}.yaml`), depYaml, "utf8");
+    } catch {}
+
+    // 7. Deploy all proxies locally into ./data/proxies/
+    const proxiesDir = path.join(process.cwd(), "data", "proxies");
+    if (!fs.existsSync(proxiesDir)) fs.mkdirSync(proxiesDir, { recursive: true });
 
     for (const item of proxiesToDeploy) {
       const p = item.proxy;
@@ -357,10 +655,17 @@ export class DeploymentManager {
       // Collect base paths
       const basePaths = (p.endpoints || []).map((ep: any) => ep.basePath || `/${proxyName}`);
 
-      // Serialize to YAML and save to ./templates/{name}.yaml
+      // Serialize to YAML and save to ./data/proxies/{name}.yaml and ./data/templates/
       const yamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
-      const targetFilePath = path.join(templatesDir, `${proxyName}.yaml`);
+      const targetFilePath = path.join(proxiesDir, `${proxyName}.yaml`);
       fs.writeFileSync(targetFilePath, yamlStr, "utf8");
+
+      const templatesDir = path.join(process.cwd(), "data", "templates");
+      if (!fs.existsSync(templatesDir)) fs.mkdirSync(templatesDir, { recursive: true });
+      const templateFilePath = path.join(templatesDir, `${proxyName}.yaml`);
+      if (!fs.existsSync(templateFilePath)) {
+        fs.writeFileSync(templateFilePath, yamlStr, "utf8");
+      }
 
       deployedProxies.push({
         name: proxyName,
@@ -388,6 +693,7 @@ export class DeploymentManager {
       importedProducts,
       importedUsers,
       importedKvm,
+      importedTests: importedTests.length > 0 ? importedTests : undefined,
       errors: errors.length > 0 ? errors : undefined,
       timestamp: new Date().toISOString(),
     };

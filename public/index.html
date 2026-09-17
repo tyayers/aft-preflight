@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AFT TESTPILOT — Runtime Explorer & Tester</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42' fill='none'%3E%3Crect width='42' height='42' rx='10' fill='%23151d30'/%3E%3Crect x='0.5' y='0.5' width='41' height='41' rx='9.5' stroke='%23ffffff' stroke-opacity='0.14'/%3E%3Cpath d='M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57' fill='%23ffffff'/%3E%3C/svg%3E">
+  <script src="/js-yaml.min.js"></script>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <a href="/" class="brand-logo" id="logoLink" title="AFT TESTPILOT">
+        <svg class="brand-logo-mark" width="30" height="30" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Aft Logo">
+          <rect width="42" height="42" rx="10" fill="#151d30"></rect>
+          <rect x="0.5" y="0.5" width="41" height="41" rx="9.5" stroke="#ffffff" stroke-opacity="0.14"></rect>
+          <path d="M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57" fill="#ffffff"></path>
+        </svg>
+        <span>AFT TESTPILOT</span>
+      </a>
+      <span class="header-divider"></span>
+      <span class="app-subtitle">RUNTIME EXPLORER & TESTER</span>
+      <span class="gateway-status-badge" id="gatewayStatusBadge">
+        <span class="status-dot"></span>
+        <span id="gatewayStatusText">Runtime Ready</span>
+      </span>
+    </div>
+
+    <!-- Right Header Actions -->
+    <div class="header-actions">
+      <!-- Quick counts bar -->
+      <div class="header-counts-bar" id="headerCountsBar">
+        <span class="header-stat-tag" id="hStatProxies">0 Proxies</span>
+        <span class="header-stat-tag" id="hStatProducts">0 Products</span>
+        <span class="header-stat-tag" id="hStatUsers">0 Users</span>
+      </div>
+
+      <!-- Quick Test Console Button -->
+      <button class="btn btn-secondary btn-sm" id="btnHeaderTestConsole" title="Open Interactive Endpoint Tester">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span>Test Console</span>
+      </button>
+
+      <!-- Help Button -->
+      <button class="btn-icon" id="btnHeaderHelp" title="Help & Source Code Projects (?)" aria-label="Open Help & Documentation">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+
+      <!-- Theme Toggle -->
+      <button class="btn-icon" id="themeToggleBtn" title="Toggle Light / Dark mode">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- App Layout: Left Sidebar + Main Content -->
+  <div class="app-layout">
+
+    <!-- ====================================================================
+         Left Navigation Sidebar
+         ==================================================================== -->
+    <aside class="sidebar-nav" id="sidebarNav">
+      <!-- Search Filter -->
+      <div class="sidebar-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="sidebarSearchInput" placeholder="Filter proxies, products..." autocomplete="off">
+        <button class="search-clear-btn" id="sidebarSearchClear" style="display: none;">&times;</button>
+      </div>
+
+      <!-- Navigation Tree -->
+      <div class="sidebar-sections" id="sidebarSections">
+
+        <!-- Proxies Section -->
+        <div class="nav-section" id="navSectionProxies">
+          <div class="nav-section-header" data-toggle="proxies">
+            <div class="nav-header-left">
+              <span class="chevron-icon">›</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span class="nav-header-title">Proxies</span>
+            </div>
+            <span class="nav-badge" id="badgeNavProxies">0</span>
+          </div>
+          <div class="nav-section-items" id="navItemsProxies"></div>
+        </div>
+
+        <!-- Products Section -->
+        <div class="nav-section" id="navSectionProducts">
+          <div class="nav-section-header" data-toggle="products">
+            <div class="nav-header-left">
+              <span class="chevron-icon">›</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span class="nav-header-title">Products</span>
+            </div>
+            <span class="nav-badge" id="badgeNavProducts">0</span>
+          </div>
+          <div class="nav-section-items" id="navItemsProducts"></div>
+        </div>
+
+        <!-- Users Section -->
+        <div class="nav-section" id="navSectionUsers">
+          <div class="nav-section-header" data-toggle="users">
+            <div class="nav-header-left">
+              <span class="chevron-icon">›</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span class="nav-header-title">Users & Apps</span>
+            </div>
+            <span class="nav-badge" id="badgeNavUsers">0</span>
+          </div>
+          <div class="nav-section-items" id="navItemsUsers"></div>
+        </div>
+
+        <!-- Traces Section -->
+        <div class="nav-section" id="navSectionTraces">
+          <div class="nav-section-header" data-toggle="traces">
+            <div class="nav-header-left">
+              <span class="chevron-icon">›</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              <span class="nav-header-title">Live Traces</span>
+            </div>
+            <span class="nav-badge" id="badgeNavTraces">0</span>
+          </div>
+          <div class="nav-section-items" id="navItemsTraces"></div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="sidebar-status-line">
+          <span class="status-indicator-dot"></span>
+          <span>Bungee Runtime 1.0</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ====================================================================
+         Main Workspace Area
+         ==================================================================== -->
+    <main class="main-workspace" id="mainWorkspace">
+
+      <!-- Breadcrumbs & Item Header -->
+      <div class="content-header" id="contentHeader">
+        <div class="header-title-area">
+          <div class="item-meta-row">
+            <span class="badge badge-outline" id="itemTypeBadge">PROXY</span>
+            <span class="item-subpath" id="itemSubpath">/v1/chat/completions</span>
+          </div>
+          <h1 class="item-title" id="itemTitleDisplay">REST-AI-Completions</h1>
+        </div>
+
+        <!-- Mode Tabs: Overview | YAML | Test Console -->
+        <div class="segmented-control" id="mainTabControl">
+          <button class="segmented-btn active" data-tab="overview" id="tabBtnOverview">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Overview</span>
+          </button>
+          <button class="segmented-btn" data-tab="yaml" id="tabBtnYaml">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>YAML Spec</span>
+          </button>
+          <button class="segmented-btn" data-tab="tester" id="tabBtnTester">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Test Console</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab Content 1: Visual Overview -->
+      <div class="tab-pane active" id="paneOverview">
+        <div class="overview-container" id="overviewContainer">
+          <!-- Dynamically populated based on selected item type -->
+        </div>
+      </div>
+
+      <!-- Tab Content 2: YAML Specification View -->
+      <div class="tab-pane" id="paneYaml">
+        <div class="yaml-container">
+          <div class="yaml-toolbar">
+            <div class="yaml-file-name" id="yamlFilenameLabel">spec.yaml</div>
+            <div class="yaml-actions">
+              <button class="btn btn-secondary btn-sm" id="btnCopyYaml">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy YAML</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btnDownloadYaml">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Download</span>
+              </button>
+            </div>
+          </div>
+          <div class="yaml-code-wrapper">
+            <pre><code id="yamlCodeView">Loading...</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 3: Interactive Endpoint Tester (Postman-style) -->
+      <div class="tab-pane" id="paneTester">
+        <div class="tester-container">
+
+          <!-- Linked Proxy Tests Card (Loaded from Deployments) -->
+          <div class="proxy-tests-card" id="proxyTestsCard" style="display: none;">
+            <div class="proxy-tests-header">
+              <div class="proxy-tests-header-left">
+                <div class="proxy-tests-badge-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                </div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="proxy-tests-title" id="proxyTestsTitle">Deployment Tests</span>
+                    <span class="badge badge-primary" id="proxyTestsCountBadge">0 tests</span>
+                  </div>
+                  <div class="proxy-tests-subtitle" id="proxyTestsSubtitle">Preconfigured tests from deployments linked to this proxy</div>
+                </div>
+              </div>
+              <div class="proxy-tests-header-right">
+                <button class="btn btn-primary btn-sm" id="btnRunAllProxyTests">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>Run All Tests</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- List of Test Cards -->
+            <div class="proxy-tests-grid" id="proxyTestsGrid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Active Test Notice Banner -->
+          <div class="active-test-banner" id="activeTestBanner" style="display: none;">
+            <div class="active-test-banner-left">
+              <span class="active-test-pill">Active Test</span>
+              <strong id="activeTestNameDisplay">completions-test1</strong>
+              <span class="active-test-assertions-label" id="activeTestAssertionsDisplay">Assertions: status.code == 200</span>
+            </div>
+            <div class="active-test-banner-right">
+              <button class="btn btn-subtle-sm" id="btnResetActiveTest">Reset to Freeform Request</button>
+            </div>
+          </div>
+
+          <!-- Top Request Bar -->
+          <div class="tester-req-bar">
+            <!-- Verb selector -->
+            <select class="verb-selector" id="testerVerbSelect">
+              <option value="GET">GET</option>
+              <option value="POST" selected>POST</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+              <option value="PATCH">PATCH</option>
+              <option value="OPTIONS">OPTIONS</option>
+              <option value="HEAD">HEAD</option>
+            </select>
+
+            <!-- URL input -->
+            <input type="text" class="tester-url-input" id="testerUrlInput" value="http://localhost:8080/v1/chat/completions" placeholder="http://localhost:8080/path">
+
+            <!-- Send button -->
+            <button class="btn btn-primary" id="btnTesterSend">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span id="btnTesterSendText">Send Request</span>
+            </button>
+          </div>
+
+          <!-- Tester Split: Request Setup (Left/Top) and Response/Trace (Right/Bottom) -->
+          <div class="tester-split-layout">
+
+            <!-- Left: Request Configuration -->
+            <div class="tester-box tester-req-box">
+              <div class="tester-box-header">
+                <div class="tester-tabs">
+                  <button class="tester-subtab active" data-subtab="headers" id="subtabBtnHeaders">Headers (<span id="headersCountBadge">2</span>)</button>
+                  <button class="tester-subtab" data-subtab="body" id="subtabBtnBody">Request Body</button>
+                </div>
+                <div class="quick-helpers">
+                  <button class="btn btn-subtle-sm" id="btnPresetApiKey" title="Insert API key from loaded User">Insert API Key</button>
+                  <button class="btn btn-subtle-sm" id="btnPresetOpenAi" title="Insert OpenAI Chat Body">Sample Payload</button>
+                </div>
+              </div>
+
+              <!-- Subpane: Headers -->
+              <div class="tester-subpane active" id="subpaneHeaders">
+                <div class="headers-table-wrapper">
+                  <table class="key-value-table" id="headersTable">
+                    <thead>
+                      <tr>
+                        <th style="width: 36%;">Header Name</th>
+                        <th>Header Value</th>
+                        <th style="width: 36px;"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="headersTableBody">
+                      <!-- Rows injected dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+                <button class="btn btn-secondary btn-sm btn-add-row" id="btnAddHeaderRow">
+                  <span>+ Add Header</span>
+                </button>
+              </div>
+
+              <!-- Subpane: Request Body -->
+              <div class="tester-subpane" id="subpaneBody">
+                <div class="body-toolbar">
+                  <span style="font-size: var(--font-xs); color: var(--text-muted);">Content-Type: application/json</span>
+                  <button class="btn btn-subtle-sm" id="btnFormatJson">Format JSON</button>
+                </div>
+                <textarea class="code-textarea" id="testerBodyTextarea" placeholder='{\n  "model": "gemini-3.7-flash",\n  "messages": [\n    {"role": "user", "content": "Hello!"}\n  ]\n}'></textarea>
+              </div>
+            </div>
+
+            <!-- Right: Response & Trace Profiler -->
+            <div class="tester-box tester-res-box">
+              <div class="tester-box-header">
+                <div class="res-meta-badges">
+                  <span class="res-status-badge" id="resStatusBadge">Status: Ready</span>
+                  <span class="res-stat-pill" id="resDurationPill">0 ms</span>
+                  <span class="res-stat-pill" id="resSizePill">0 B</span>
+                  <span class="res-stat-pill res-stream-pill" id="resStreamPill" style="display: none;">Streaming</span>
+                  <span class="res-stat-pill res-assertion-pill" id="resAssertionPill" style="display: none;">Assertions</span>
+                  <span class="res-stat-pill trace-link-pill" id="resTraceIdPill" style="display: none;">Trace Available</span>
+                </div>
+                <div class="tester-tabs">
+                  <button class="tester-subtab active" data-ressubtab="body" id="resSubtabBtnBody">Response Body</button>
+                  <button class="tester-subtab" data-ressubtab="headers" id="resSubtabBtnHeaders">Headers</button>
+                  <button class="tester-subtab" data-ressubtab="assertions" id="resSubtabBtnAssertions">Assertions (<span id="resAssertionsCountBadge">0</span>)</button>
+                  <button class="tester-subtab" data-ressubtab="trace" id="resSubtabBtnTrace">Profiling & Trace</button>
+                </div>
+              </div>
+
+              <!-- Response Subpane: Body -->
+              <div class="res-subpane active" id="resSubpaneBody">
+                <div class="res-body-actions">
+                  <button class="btn btn-secondary btn-sm" id="btnCopyResponseBody">Copy Response</button>
+                </div>
+                <pre class="res-code-pre"><code id="resBodyCode">Make a request to view the response...</code></pre>
+              </div>
+
+              <!-- Response Subpane: Assertions -->
+              <div class="res-subpane" id="resSubpaneAssertions">
+                <div class="assertions-card-wrapper" id="assertionsCardWrapper">
+                  <div class="assertions-empty-notice" id="assertionsEmptyNotice">
+                    No assertions executed yet. Load or run a test with assertions to validate response status.
+                  </div>
+                  <div class="assertions-list" id="assertionsList" style="display: none;"></div>
+                </div>
+              </div>
+
+              <!-- Response Subpane: Headers -->
+              <div class="res-subpane" id="resSubpaneHeaders">
+                <table class="key-value-table" id="resHeadersTable">
+                  <thead>
+                    <tr><th>Header Name</th><th>Value</th></tr>
+                  </thead>
+                  <tbody id="resHeadersTableBody">
+                    <tr><td colspan="2" style="color: var(--text-muted); text-align: center;">No headers received yet</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Response Subpane: Step Profiling & Trace -->
+              <div class="res-subpane" id="resSubpaneTrace">
+                <div class="trace-toolbar">
+                  <div class="trace-toolbar-left">
+                    <span class="trace-id-label" id="traceIdLabel">Trace: None</span>
+                    <span class="trace-duration-label" id="traceDurationLabel">Total Duration: 0ms</span>
+                  </div>
+                  <div class="trace-export-group">
+                    <button class="btn btn-secondary btn-sm" id="btnExportApigee">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>Apigee Trace</span>
+                    </button>
+                    <button class="btn btn-secondary btn-sm" id="btnExportOtel">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>OTEL Trace</span>
+                    </button>
+                    <button class="btn btn-secondary btn-sm" id="btnExportNative">
+                      <span>Bungee JSON</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Trace Waterfall / Steps Timeline -->
+                <div class="trace-timeline-container" id="traceTimelineContainer">
+                  <div class="trace-empty-notice" id="traceEmptyNotice">Execute an endpoint call to inspect execution steps, timings, and variables.</div>
+                </div>
+
+                <!-- Step Variable Details Drawer -->
+                <div class="step-variables-drawer" id="stepVariablesDrawer" style="display: none;">
+                  <div class="drawer-header">
+                    <span style="font-weight: 600;" id="drawerStepTitle">Step Variables</span>
+                    <button class="btn-icon" id="btnCloseVariablesDrawer">&times;</button>
+                  </div>
+                  <div class="drawer-body" id="drawerStepContent"></div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Tab Content 4: Dedicated Traces History List -->
+      <div class="tab-pane" id="paneTracesList">
+        <div class="traces-list-container">
+          <div class="traces-list-header">
+            <div>
+              <h2 style="font-size: var(--font-2xl); font-weight: 700; margin: 0 0 4px 0;">Runtime Execution Traces</h2>
+              <p style="font-size: var(--font-base); color: var(--text-muted); margin: 0;">Step profiling data collected for proxy calls in Apigee and OTEL formats</p>
+            </div>
+            <div class="traces-actions">
+              <button class="btn btn-secondary btn-sm" id="btnClearTraces">Clear All Traces</button>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshTraces">Refresh</button>
+            </div>
+          </div>
+
+          <!-- Selected Trace Detail Card (shown when clicking a trace) -->
+          <div class="trace-detail-card" id="traceDetailCard" style="display: none; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 18px; margin-bottom: 20px; box-shadow: var(--shadow-sm); position: relative;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-light); gap: 12px; flex-wrap: wrap;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <span class="badge badge-outline" id="traceDetailMethod">GET</span>
+                  <span style="font-family: var(--font-mono); font-size: var(--font-base); font-weight: 700;" id="traceDetailPath">/v1/chat/completions</span>
+                  <span class="res-status-badge status-2xx" id="traceDetailStatus">200</span>
+                </div>
+                <div style="font-size: var(--font-xs); color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap;">
+                  <span id="traceDetailProxy">Proxy: REST-AI-Completions</span>
+                  <span id="traceDetailDuration">Duration: 0ms</span>
+                  <span id="traceDetailId" style="font-family: var(--font-mono);">ID: trace-...</span>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="btn btn-secondary btn-sm" id="btnExportApigeeDetail">Apigee Trace</button>
+                <button class="btn btn-secondary btn-sm" id="btnExportOtelDetail">OTEL Trace</button>
+                <button class="btn btn-secondary btn-sm" id="btnExportNativeDetail">Bungee JSON</button>
+                <button class="btn-icon" id="btnCloseTraceDetail" title="Close Trace Inspector" style="margin-left: 6px;">&times;</button>
+              </div>
+            </div>
+
+            <!-- Steps timeline container for detail -->
+            <div id="traceDetailStepsContainer" style="display: flex; flex-direction: column; gap: 6px;"></div>
+
+            <!-- Target Call Container -->
+            <div id="traceDetailTargetContainer" style="margin-top: 12px;"></div>
+
+            <!-- Step Variables Drawer for standalone detail -->
+            <div class="step-variables-drawer" id="stepVariablesDrawerDetail" style="display: none;">
+              <div class="drawer-header">
+                <span style="font-weight: 600;" id="drawerStepTitleDetail">Step Variables</span>
+                <button class="btn-icon" id="btnCloseVariablesDrawerDetail">&times;</button>
+              </div>
+              <div class="drawer-body" id="drawerStepContentDetail"></div>
+            </div>
+          </div>
+
+          <div class="traces-table-wrapper">
+            <table class="traces-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Proxy</th>
+                  <th>Method</th>
+                  <th>Path</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th>Steps</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tracesTableBody">
+                <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">No traces recorded yet. Make calls using the Test Console or directly against the runtime.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- YAML Snippet Modal Dialog -->
+  <dialog id="yamlSnippetModal" class="yaml-modal">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <span class="badge badge-outline" id="snippetTypeBadge">SNIPPET</span>
+        <h3 id="snippetModalTitle">YAML Configuration</h3>
+      </div>
+      <button class="btn-icon" id="btnCloseSnippetModal" title="Close" aria-label="Close dialog">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <pre class="snippet-code-pre"><code id="snippetModalCode"></code></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" id="btnCopySnippet">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span id="copySnippetBtnText">Copy Snippet</span>
+      </button>
+      <button class="btn btn-primary btn-sm" id="btnCloseSnippetBtn">Close</button>
+    </div>
+  </dialog>
+
+  <!-- Help & Documentation Modal Dialog -->
+  <dialog id="helpModal" class="help-modal" closedby="any" aria-labelledby="helpModalTitle">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <span class="badge badge-primary">HELP & PROJECTS</span>
+        <h3 id="helpModalTitle">AFT Testpilot & Apigee Templater</h3>
+      </div>
+      <button class="btn-icon" id="btnCloseHelpModal" title="Close (Esc)" aria-label="Close help dialog">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body help-modal-body">
+      <!-- General overview -->
+      <section class="help-section">
+        <h4 class="help-section-title">About AFT Testpilot</h4>
+        <p class="help-text">
+          <strong>AFT Testpilot</strong> is a local developer runtime explorer, visual debugger, and interactive test console for Apigee Templater declarations. It enables you to inspect proxies, API products, and developer credentials, run live test calls with SSE chunk streaming, and inspect step-by-step policy execution traces in a native Bun execution engine.
+        </p>
+      </section>
+
+      <!-- Key features -->
+      <section class="help-section">
+        <h4 class="help-section-title">Core Features</h4>
+        <div class="help-features-grid">
+          <div class="help-feature-card">
+            <div class="help-feature-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+              <span>Visual Overview</span>
+            </div>
+            <p>Clean breakdown of base endpoints, routing rules, upstream targets, and policy execution summaries.</p>
+          </div>
+          <div class="help-feature-card">
+            <div class="help-feature-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Interactive Test Console</span>
+            </div>
+            <p>Send requests with pre-filled headers and payloads, with real-time SSE chunk streaming into the response window.</p>
+          </div>
+          <div class="help-feature-card">
+            <div class="help-feature-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <span>Deployment Tests & Assertions</span>
+            </div>
+            <p>Run declared tests directly from deployment files, validate response status assertions, and inspect pass/fail metrics.</p>
+          </div>
+          <div class="help-feature-card">
+            <div class="help-feature-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+              <span>Tracing & Profiling</span>
+            </div>
+            <p>Step-by-step waterfall timeline, variable inspect drawer, and Apigee / OpenTelemetry export formats.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Source code projects -->
+      <section class="help-section">
+        <h4 class="help-section-title">Source Code & Related Projects</h4>
+        <div class="help-links-list">
+          <a href="https://github.com/tyayers/aft-testpilot" target="_blank" rel="noopener noreferrer" class="help-link-card">
+            <div class="help-link-info">
+              <div class="help-link-name">
+                <span>tyayers/aft-testpilot</span>
+                <span class="badge badge-primary">This Project</span>
+              </div>
+              <div class="help-link-desc">Local test harness, interactive runner, and runtime explorer for Apigee Templater projects.</div>
+            </div>
+            <svg class="external-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+
+          <a href="https://github.com/apigee/apigee-templater" target="_blank" rel="noopener noreferrer" class="help-link-card">
+            <div class="help-link-info">
+              <div class="help-link-name">
+                <span>apigee/apigee-templater</span>
+                <span class="badge badge-subtle">Core Engine</span>
+              </div>
+              <div class="help-link-desc">Declarative templating and proxy configuration CLI tool for Google Cloud Apigee.</div>
+            </div>
+            <svg class="external-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+
+          <a href="https://github.com/gcp-samples/apigee-template-repository" target="_blank" rel="noopener noreferrer" class="help-link-card">
+            <div class="help-link-info">
+              <div class="help-link-name">
+                <span>gcp-samples/apigee-template-repository</span>
+                <span class="badge badge-subtle">Templates</span>
+              </div>
+              <div class="help-link-desc">Official Google Cloud sample repository for Apigee templates, blueprints, and patterns.</div>
+            </div>
+            <svg class="external-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          </a>
+        </div>
+      </section>
+
+      <!-- URL Deep Linking & Navigation -->
+      <section class="help-section" style="margin-bottom: 0;">
+        <h4 class="help-section-title">URL Deep Linking & Shortcuts</h4>
+        <p class="help-text" style="margin-bottom: 6px;">
+          Opening any proxy, product, user, or trace automatically updates your browser address bar (e.g. <code>?proxy=REST-AI-Completions</code> or <code>?trace=...</code>). Refreshing or sharing the URL will load the exact same resource.
+        </p>
+        <p class="help-text" style="color: var(--text-muted); font-size: var(--font-xs);">
+          Keyboard shortcut: Press <kbd style="background: var(--bg-surface-subtle); border: 1px solid var(--border-light); padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono);">?</kbd> to open this dialog anytime, and <kbd style="background: var(--bg-surface-subtle); border: 1px solid var(--border-light); padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono);">Esc</kbd> to dismiss.
+        </p>
+      </section>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary btn-sm" id="btnCloseHelpFooterBtn">Close</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

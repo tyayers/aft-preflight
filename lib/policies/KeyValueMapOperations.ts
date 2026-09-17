@@ -6,19 +6,8 @@ export interface KeyValueStore {
   [mapIdentifier: string]: Record<string, any>;
 }
 
-// Global in-memory KVM store initialized with default seeds
-export const globalKvmStore: KeyValueStore = {
-  "AI-Config": {
-    FailoverModel: "google/gemini-3.7-flash",
-    PriceList: JSON.stringify({
-      default: { requestPerMillionTokens: 1, responsePerMillionTokens: 3 },
-      "google/gemini-3.7-flash": { requestPerMillionTokens: 0.15, responsePerMillionTokens: 0.6 },
-      "google/gemini-3.5-flash-lite": { requestPerMillionTokens: 0.075, responsePerMillionTokens: 0.3 },
-    }),
-    GroupsLookup: "{}",
-    Groups: "[]",
-  },
-};
+// Global in-memory KVM store initialized from YAML on startup
+export const globalKvmStore: KeyValueStore = {};
 
 export interface KeyValueMapGet {
   key: string;
@@ -78,7 +67,22 @@ export async function keyValueMapOperations(options: KeyValueMapOptions, context
   const mapIdentifier = options.mapIdentifier || "default";
   if (!globalKvmStore[mapIdentifier]) {
     const fileKvm = loadLocalFileKvm(mapIdentifier);
-    globalKvmStore[mapIdentifier] = fileKvm || {};
+    if (fileKvm) {
+      globalKvmStore[mapIdentifier] = fileKvm;
+    } else if (mapIdentifier === "AI-Config") {
+      globalKvmStore[mapIdentifier] = {
+        FailoverModel: "google/gemini-3.7-flash",
+        PriceList: JSON.stringify({
+          default: { requestPerMillionTokens: 1, responsePerMillionTokens: 3 },
+          "google/gemini-3.7-flash": { requestPerMillionTokens: 0.15, responsePerMillionTokens: 0.6 },
+          "google/gemini-3.5-flash-lite": { requestPerMillionTokens: 0.075, responsePerMillionTokens: 0.3 },
+        }),
+        GroupsLookup: "{}",
+        Groups: "[]",
+      };
+    } else {
+      globalKvmStore[mapIdentifier] = {};
+    }
   }
   const map = globalKvmStore[mapIdentifier];
 

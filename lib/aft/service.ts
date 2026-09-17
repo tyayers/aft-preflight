@@ -520,6 +520,11 @@ export class ApigeeTemplaterService {
                 result = YAML.parse(content) as Template;
               }
               if (result) {
+                // If this file is actually a compiled proxy (type === "proxy" and no features),
+                // skip it so templateGet doesn't treat a compiled proxy as a template definition.
+                if (result.type === "proxy" && (!result.features || (Array.isArray(result.features) && result.features.length === 0))) {
+                  continue;
+                }
                 if (!result.name) {
                   result.name = candidate.replace(/\.(yaml|yml|json)$/i, "");
                 }

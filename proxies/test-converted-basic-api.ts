@@ -6,17 +6,26 @@ import {
   globalResourceStore,
 } from "../lib/apigee";
 import { Http } from "../lib/http";
+import { DataManager } from "../lib/DataManager";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
   "Access-Control-Allow-Headers": "*",
+  "Access-Control-Expose-Headers": "*",
 };
 
 const print = console.log;
 
+// Always initialize DataManager to load YAMLs (deployments, products, kvm, users) on startup
+DataManager.initializeSync();
+
 
 export class TestConvertedBasicApiProxy {
+  constructor() {
+    DataManager.initializeSync();
+  }
+
   async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -25,7 +34,7 @@ export class TestConvertedBasicApiProxy {
       });
     }
 
-    const context = new ApigeeContext(req);
+    const context = new ApigeeContext(req, {}, "test-converted-basic-api");
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       const contentType = req.headers.get("content-type") || "";
@@ -62,10 +71,16 @@ export class TestConvertedBasicApiProxy {
         }
       }
 
-      const targetObj = targetsMap[selectedTargetName];
+      let targetObj = targetsMap[selectedTargetName];
+      if (!targetObj && (selectedTargetName === "default" || !targetsMap[selectedTargetName])) {
+        targetObj = targetsMap["default"] || Object.values(targetsMap)[0];
+      }
       const rawTargetUrl = targetObj?.url || "https://httpbin.org/get";
       const resolvedTargetBaseUrl = context.resolveVariables(rawTargetUrl).replace(/\/+$/, "");
       const fullTargetUrl = path ? `${resolvedTargetBaseUrl}/${path}` : resolvedTargetBaseUrl;
+      if (!fullTargetUrl || !fullTargetUrl.trim()) {
+        throw new Error(`Target '${selectedTargetName}' not found or has no URL defined in proxy/template.`);
+      }
 
       const headers = new Headers();
       const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
@@ -76,6 +91,7 @@ export class TestConvertedBasicApiProxy {
       }
 
       let response: Response;
+      const targetStartTime = Date.now();
       try {
         response = await fetch(fullTargetUrl, {
           method: req.method,
@@ -86,14 +102,42 @@ export class TestConvertedBasicApiProxy {
 
         context.response.status = response.status;
         context.response.statusText = response.statusText;
+        const skipResponseHeaders = new Set([
+          "content-length",
+          "content-encoding",
+          "transfer-encoding",
+          "connection",
+          "keep-alive",
+          "access-control-allow-origin",
+          "access-control-allow-methods",
+          "access-control-allow-headers",
+          "access-control-expose-headers",
+        ]);
         for (const [k, v] of response.headers.entries()) {
-          if (k.toLowerCase() !== "content-length") {
+          if (!skipResponseHeaders.has(k.toLowerCase())) {
             context.response.setHeader(k, v);
           }
         }
+        context.recordTargetCall({
+          name: context.getVariable("target.name") || "default",
+          url: fullTargetUrl,
+          verb: req.method,
+          status: response.status,
+          durationMs: Date.now() - targetStartTime,
+          requestHeaders: Object.fromEntries(headers.entries()),
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+        });
       } catch (targetErr: any) {
         context.setVariable("target.failed", true);
         context.setVariable("target.error", targetErr.message);
+        context.recordTargetCall({
+          name: context.getVariable("target.name") || "default",
+          url: fullTargetUrl,
+          verb: req.method,
+          status: 502,
+          durationMs: Date.now() - targetStartTime,
+          requestHeaders: Object.fromEntries(headers.entries()),
+        });
         if (!context.response.content && context.response.status === 200) {
           response = new Response(JSON.stringify({ error: { message: targetErr.message, code: 502 } }), {
             status: 502,
@@ -112,6 +156,7 @@ export class TestConvertedBasicApiProxy {
       const targetContentType = context.response.getHeader("content-type") || response?.headers?.get("content-type") || "";
       if (Http.isStreaming(targetContentType)) {
         const self = this;
+        context.finalizeTrace();
         const responseHeaders = {
           ...corsHeaders,
           ...context.response.headers,
@@ -140,6 +185,7 @@ export class TestConvertedBasicApiProxy {
       }
 
       // 4. Return Response
+      context.finalizeTrace();
       const responseHeaders = {
         ...corsHeaders,
         ...context.response.headers,
@@ -149,12 +195,28 @@ export class TestConvertedBasicApiProxy {
         headers: responseHeaders,
       });
     } catch (err: any) {
+      if (!context.getVariable("fault.name")) {
+        context.setVariable("fault.name", "ScriptExecutionFailed");
+      }
+      if (!context.fault) {
+        context.fault = {
+          name: context.getVariable("fault.name") || "ScriptExecutionFailed",
+          status: 500,
+          error: err?.message || String(err),
+        };
+      }
+      context.finalizeTrace();
       const responseHeaders = {
         ...corsHeaders,
         ...context.response.headers,
       };
-      return new Response(context.response.rawContent || JSON.stringify({ error: err.message }), {
-        status: context.fault?.status || context.response.status || 500,
+      let faultStatus = context.fault?.status || (context.response.status !== 200 ? context.response.status : 500);
+      let faultBody = context.response.rawContent;
+      if (!faultBody || faultBody === "{}" || (context.response.status === 200 && !context.response.content)) {
+        faultBody = JSON.stringify({ error: err?.message || String(err) });
+      }
+      return new Response(faultBody, {
+        status: faultStatus,
         headers: responseHeaders,
       });
     }

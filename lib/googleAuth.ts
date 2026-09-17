@@ -66,3 +66,54 @@ export async function getGoogleAccessToken(forceRefresh: boolean = false): Promi
   // 4. Default fallback
   return "mock-google-cloud-token";
 }
+
+let cachedProjectId: string | null = null;
+
+function resolveProjectIdSync(): string {
+  if (process.env.APIGEE_ORG) return process.env.APIGEE_ORG;
+  if (process.env.GOOGLE_CLOUD_PROJECT) return process.env.GOOGLE_CLOUD_PROJECT;
+  if (process.env.GCP_PROJECT) return process.env.GCP_PROJECT;
+  if (process.env.PROJECT_ID) return process.env.PROJECT_ID;
+  try {
+    const proc = Bun.spawnSync(["gcloud", "config", "get-value", "project"], {
+      stderr: "ignore",
+    });
+    if (proc.exitCode === 0) {
+      const pid = proc.stdout.toString().split("\n")[0].trim();
+      if (pid && !pid.startsWith("ERROR") && !pid.startsWith("WARNING")) {
+        return pid;
+      }
+    }
+  } catch {}
+  return "bungee-org";
+}
+
+cachedProjectId = resolveProjectIdSync();
+
+/**
+ * Resolves the Google Cloud project ID from environment variables, gcloud CLI, or ADC.
+ */
+export async function getGoogleProjectId(): Promise<string> {
+  if (cachedProjectId && cachedProjectId !== "bungee-org") return cachedProjectId;
+  cachedProjectId = resolveProjectIdSync();
+  if (cachedProjectId && cachedProjectId !== "bungee-org") return cachedProjectId;
+
+  try {
+    const auth = new GoogleAuth();
+    const pid = await auth.getProjectId();
+    if (pid) {
+      cachedProjectId = pid;
+      return pid;
+    }
+  } catch {}
+
+  return cachedProjectId || "bungee-org";
+}
+
+export function getCachedProjectId(): string {
+  if (!cachedProjectId || cachedProjectId === "bungee-org") {
+    cachedProjectId = resolveProjectIdSync();
+  }
+  return cachedProjectId;
+}
+

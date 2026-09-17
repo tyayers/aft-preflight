@@ -21,7 +21,7 @@ const print = console.log;
 DataManager.initializeSync();
 
 globalResourceStore["openapi.yaml"] = "openapi: 3.0.0\ninfo:\n  title: OpenAI Chat Completions API\n  description: Basic request structure validation for OpenAI Chat Completions API.\n  version: 1.0.0\npaths:\n  /:\n    post:\n      summary: Create chat completion\n      requestBody:\n        required: true\n        content:\n          application/json:\n            schema:\n              type: object\n              required:\n                - model\n                - messages\n              additionalProperties: false\n              properties:\n                model:\n                  type: string\n                messages:\n                  type: array\n                  items:\n                    type: object\n                    required:\n                      - role\n                      - content\n                    additionalProperties: false\n                    properties:\n                      role:\n                        type: string\n                      content:\n                        nullable: true\n                        oneOf:\n                          - type: string\n                          - type: array\n                            items:\n                              type: object\n                      name:\n                        type: string\n                      tool_calls:\n                        type: array\n                        items:\n                          type: object\n                      tool_call_id:\n                        type: string\n                temperature:\n                  type: number\n                top_p:\n                  type: number\n                n:\n                  type: integer\n                stream:\n                  type: boolean\n                stop:\n                  oneOf:\n                    - type: string\n                    - type: array\n                      items:\n                        type: string\n                max_tokens:\n                  type: integer\n                presence_penalty:\n                  type: number\n                frequency_penalty:\n                  type: number\n                logit_bias:\n                  type: object\n                user:\n                  type: string\n                tools:\n                  type: array\n                  items:\n                    type: object\n                tool_choice:\n                  oneOf:\n                    - type: string\n                    - type: object\n                response_format:\n                  type: object\n                seed:\n                  type: integer\n                service_tier:\n                  type: string\n      responses:\n        \"200\":\n          description: Successful response\n";
-globalResourceStore["ai.properties"] = "ModelRouting='google/*'=googlecloud-oai,'anthropic/*'=googlecloud\nModelMapping=gemini-flash-latest=gemini-3.7-flash,gemini-2.5-flash=gemini-3.7-flash\n";
+globalResourceStore["ai.properties"] = "ModelRouting=true\n";
 globalResourceStore["ai-functions.js"] = "function getBodyString(content) {\n  if (content === null || content === undefined) return \"\";\n  if (typeof content === \"string\") return content;\n  return String(content);\n}\n\nfunction extractGoogleInput(contents) {\n  if (!contents || !Array.isArray(contents)) return \"\";\n  for (var i = contents.length - 1; i >= 0; i--) {\n    var item = contents[i];\n    if (item && item.role && item.role.toLowerCase() === \"user\" && item.parts && Array.isArray(item.parts)) {\n      for (var p = item.parts.length - 1; p >= 0; p--) {\n        if (item.parts[p] && item.parts[p].text) {\n          return item.parts[p].text;\n        }\n      }\n    }\n  }\n  return \"\";\n}\n\nfunction extractMessagesInput(messages) {\n  if (!messages || !Array.isArray(messages)) return \"\";\n  for (var i = messages.length - 1; i >= 0; i--) {\n    var msg = messages[i];\n    if (msg && msg.role && msg.role.toLowerCase() === \"user\") {\n      if (typeof msg.content === \"string\") {\n        return msg.content;\n      }\n      if (Array.isArray(msg.content)) {\n        var parts = [];\n        for (var c = 0; c < msg.content.length; c++) {\n          var part = msg.content[c];\n          if (part && part.type === \"text\" && part.text) {\n            parts.push(part.text);\n          } else if (typeof part === \"string\") {\n            parts.push(part);\n          }\n        }\n        if (parts.length > 0) {\n          return parts.join(\" \");\n        }\n      }\n    }\n  }\n  return \"\";\n}\n\nfunction encodeBytesToBase64(data) {\n  if (!data) return \"\";\n  try {\n    if (typeof java !== \"undefined\" && java.util && java.util.Base64) {\n      if (typeof data === \"string\") {\n        var bytes = data.split(\"\").map(function(c) { return c.charCodeAt(0) & 0xFF; });\n        return java.util.Base64.getEncoder().encodeToString(bytes);\n      }\n      return java.util.Base64.getEncoder().encodeToString(data);\n    }\n  } catch (e) {}\n  try {\n    if (typeof Buffer !== \"undefined\") {\n      return Buffer.from(data).toString(\"base64\");\n    }\n  } catch (e) {}\n  return \"\";\n}\n\nfunction decodeBase64ToBytes(base64Str) {\n  if (!base64Str) return \"\";\n  try {\n    if (typeof java !== \"undefined\" && java.util && java.util.Base64) {\n      return java.util.Base64.getDecoder().decode(base64Str);\n    }\n  } catch (e) {}\n  try {\n    if (typeof Buffer !== \"undefined\") {\n      return Buffer.from(base64Str, \"base64\");\n    }\n  } catch (e) {}\n  return base64Str;\n}\n\nfunction getModelName(urlString, contentString) {\n  if (typeof getRequestInfo === \"undefined\" && typeof require !== \"undefined\") {\n    var reqInfoModule = require(\"./getRequestInfo\");\n    var fn = reqInfoModule.getRequestInfo;\n    var info = fn(urlString, contentString);\n    return info.modelName;\n  }\n  var infoObj = typeof getRequestInfo === \"function\" ? getRequestInfo(urlString, contentString) : { modelName: \"unknown\" };\n  return infoObj.modelName;\n}\n\nfunction getPrompts(contentData) {\n  if (typeof getRequestInfo === \"undefined\" && typeof require !== \"undefined\") {\n    var reqInfoModule = require(\"./getRequestInfo\");\n    var fn = reqInfoModule.getRequestInfo;\n    var info = fn(\"\", contentData);\n    return {\n      userPrompt: info.input,\n      allUserPrompts: info.input,\n      protocol: info.protocol\n    };\n  }\n  var infoObj = typeof getRequestInfo === \"function\" ? getRequestInfo(\"\", contentData) : { input: \"\", protocol: \"unknown\" };\n  return {\n    userPrompt: infoObj.input,\n    allUserPrompts: infoObj.input,\n    protocol: infoObj.protocol\n  };\n}\n\nfunction getRequestInfo(urlString, content, contentType, routingConfig) {\n  var info = {\n    input: \"\",\n    rawModelName: \"\",\n    modelName: \"unknown\",\n    cleanModelName: \"\",\n    protocol: \"unknown\",\n    provider: \"unknown\",\n    targetRoute: \"\",\n    region: \"global\",\n    requestType: \"text\",\n    isStreaming: false,\n    streaming: \"non-streaming\"\n  };\n\n  var url = urlString || \"\";\n  var lowerUrl = url.toLowerCase();\n\n  // 1. Detect requestType and streaming from URL\n  if (lowerUrl.indexOf(\"/audio/speech\") !== -1 || lowerUrl.indexOf(\"/speech/audio\") !== -1) {\n    info.requestType = \"audio-text\";\n  } else if (lowerUrl.indexOf(\"/audio/transcription\") !== -1 || lowerUrl.indexOf(\"/audio/translation\") !== -1) {\n    info.requestType = \"audio-data\";\n  } else if (lowerUrl.indexOf(\"/images/generations\") !== -1 || lowerUrl.indexOf(\"/images/edits\") !== -1 || lowerUrl.indexOf(\"/images/variations\") !== -1) {\n    info.requestType = \"image-generation\";\n  } else if (lowerUrl.indexOf(\"/embeddings\") !== -1) {\n    info.requestType = \"embeddings\";\n  }\n\n  if (lowerUrl.indexOf(\"stream\") !== -1) {\n    info.isStreaming = true;\n    info.streaming = \"streaming\";\n  }\n\n  // 2. Parse request payload\n  var contentData = null;\n  if (typeof content === \"object\" && content !== null && !content.asJSON && !content.asString) {\n    if (\n      content.model !== undefined ||\n      content.modelVersion !== undefined ||\n      content.contents !== undefined ||\n      content.messages !== undefined ||\n      content.input !== undefined ||\n      content.prompt !== undefined ||\n      content.stream !== undefined\n    ) {\n      contentData = content;\n    }\n  }\n\n  if (!contentData) {\n    var bodyStr = typeof getBodyString === \"function\" ? getBodyString(content) : (typeof content === \"string\" ? content : \"\");\n    var isMultipart = (info.requestType === \"audio-data\") ||\n                      (contentType && contentType.toLowerCase().indexOf(\"multipart\") !== -1) ||\n                      (bodyStr && bodyStr.indexOf(\"--\") === 0);\n\n    if (bodyStr && isMultipart) {\n      contentData = typeof parseMultipartFormData === \"function\" ? parseMultipartFormData(bodyStr, contentType) : null;\n    } else if (content) {\n      if (typeof content === \"object\" && content.asJSON) {\n        contentData = content.asJSON;\n      } else if (typeof content === \"string\") {\n        try {\n          contentData = JSON.parse(content);\n        } catch (e) {}\n      } else if (bodyStr && bodyStr !== \"[object Object]\") {\n        try {\n          contentData = JSON.parse(bodyStr);\n        } catch (e) {}\n      } else if (typeof content === \"object\") {\n        contentData = content;\n      }\n    }\n  }\n\n  // 3. Extract model, streaming, and fallback requestType from contentData\n  if (contentData && typeof contentData === \"object\") {\n    if (contentData.stream === true || contentData.stream === \"true\") {\n      info.isStreaming = true;\n      info.streaming = \"streaming\";\n    }\n\n    if (info.requestType === \"text\" && contentData[\"voice\"] !== undefined && contentData[\"input\"] !== undefined) {\n      info.requestType = \"audio-text\";\n    }\n\n    if (contentData[\"model\"] && typeof contentData[\"model\"] === \"string\") {\n      info.rawModelName = contentData[\"model\"];\n      var modelParts = info.rawModelName.split(\"/\");\n      info.modelName = modelParts[modelParts.length - 1];\n    } else if (contentData[\"modelVersion\"] && typeof contentData[\"modelVersion\"] === \"string\") {\n      info.rawModelName = contentData[\"modelVersion\"];\n      info.modelName = contentData[\"modelVersion\"];\n    }\n  }\n\n  if (info.requestType === \"audio-data\" && info.protocol === \"unknown\") {\n    info.protocol = \"openai\";\n  }\n\n  // 4. Extract modelName from GCP publisher URL format if not yet determined\n  if (info.modelName === \"unknown\" && url) {\n    if (url.indexOf(\"/publishers/anthropic/models/\") !== -1) {\n      var aParts = url.split(\"/publishers/anthropic/models/\");\n      if (aParts.length > 1) {\n        info.modelName = aParts[1].split(\":\")[0];\n      }\n    } else if (url.indexOf(\"/publishers/google/models/\") !== -1) {\n      var gParts = url.split(\"/publishers/google/models/\");\n      if (gParts.length > 1) {\n        info.modelName = gParts[1].split(\":\")[0];\n      }\n    } else if (url.indexOf(\":generate\") !== -1) {\n      var genParts = url.split(\":generate\");\n      if (genParts.length > 1) {\n        var uParts = genParts[0].split(\"/\");\n        info.modelName = uParts[uParts.length - 1];\n      }\n    }\n    if (!info.rawModelName && info.modelName !== \"unknown\") {\n      info.rawModelName = info.modelName;\n    }\n  }\n\n  // 5. Detect API protocol and extract user input / prompt\n  if (contentData && typeof contentData === \"object\") {\n    if (contentData[\"contents\"] && Array.isArray(contentData[\"contents\"])) {\n      info.protocol = \"google\";\n      info.input = typeof extractGoogleInput === \"function\" ? extractGoogleInput(contentData[\"contents\"]) : \"\";\n    } else if (contentData[\"messages\"] && Array.isArray(contentData[\"messages\"])) {\n      if (\n        contentData[\"system\"] !== undefined ||\n        contentData[\"anthropic_version\"] !== undefined ||\n        contentData[\"top_k\"] !== undefined ||\n        lowerUrl.indexOf(\"/publishers/anthropic/\") !== -1 ||\n        info.modelName.toLowerCase().indexOf(\"claude\") !== -1\n      ) {\n        info.protocol = \"anthropic\";\n      } else {\n        info.protocol = \"openai\";\n      }\n      info.input = typeof extractMessagesInput === \"function\" ? extractMessagesInput(contentData[\"messages\"]) : \"\";\n    } else if (contentData[\"prompt\"] !== undefined) {\n      info.protocol = \"openai\";\n      if (typeof contentData[\"prompt\"] === \"string\") {\n        info.input = contentData[\"prompt\"];\n      } else if (Array.isArray(contentData[\"prompt\"])) {\n        info.input = contentData[\"prompt\"].join(\" \");\n      }\n    } else if (contentData[\"input\"] !== undefined) {\n      info.protocol = \"openai\";\n      if (typeof contentData[\"input\"] === \"string\") {\n        info.input = contentData[\"input\"];\n      } else if (Array.isArray(contentData[\"input\"])) {\n        info.input = contentData[\"input\"].join(\" \");\n      }\n    }\n  }\n\n  if (info.protocol === \"unknown\" && url) {\n    if (url.indexOf(\"/publishers/google/\") !== -1) {\n      info.protocol = \"google\";\n    } else if (url.indexOf(\"/publishers/anthropic/\") !== -1) {\n      info.protocol = \"anthropic\";\n    }\n  }\n\n  // 6. Process Target Routing and Provider / Model Normalization\n  var currentModel = info.rawModelName || (info.modelName !== \"unknown\" ? info.modelName : \"\");\n  info.cleanModelName = info.modelName !== \"unknown\" ? info.modelName : \"\";\n\n  if (currentModel) {\n    var parsedConfig = null;\n    if (routingConfig) {\n      if (typeof routingConfig === \"string\") {\n        try {\n          parsedConfig = JSON.parse(routingConfig);\n        } catch (e) {}\n      } else if (typeof routingConfig === \"object\") {\n        parsedConfig = routingConfig;\n      }\n    }\n\n    // A. Check config mappings\n    if (parsedConfig && parsedConfig.mappings) {\n      if (parsedConfig.mappings[currentModel]) {\n        currentModel = parsedConfig.mappings[currentModel];\n        info.mappedModelName = currentModel;\n      } else {\n        var rawProv = \"\";\n        var clean = currentModel;\n        if (currentModel.indexOf(\"/\") !== -1) {\n          var p = currentModel.split(\"/\");\n          rawProv = p[0];\n          clean = p.slice(1).join(\"/\");\n        }\n        var provModelKey = rawProv ? (rawProv + \"/\" + clean) : clean;\n        if (parsedConfig.mappings[provModelKey]) {\n          currentModel = parsedConfig.mappings[provModelKey];\n          info.mappedModelName = currentModel;\n        } else if (parsedConfig.mappings[clean]) {\n          currentModel = parsedConfig.mappings[clean];\n          info.mappedModelName = currentModel;\n        }\n      }\n    }\n\n    // B. Detect provider and clean model name\n    var rawProvider = \"\";\n    var cleanModel = currentModel;\n\n    if (currentModel.indexOf(\"/\") !== -1) {\n      var parts = currentModel.split(\"/\");\n      rawProvider = parts[0];\n      cleanModel = parts.slice(1).join(\"/\");\n    }\n\n    if (rawProvider) {\n      info.provider = rawProvider;\n      info.cleanModelName = cleanModel;\n    } else {\n      var lower = currentModel.toLowerCase();\n      if (lower.indexOf(\"gemini\") !== -1 || lower.indexOf(\"google\") !== -1 || lower.indexOf(\"embedding\") !== -1 || lower.indexOf(\"imagen\") !== -1) {\n        info.provider = \"google\";\n        info.targetRoute = \"googlecloud\";\n      } else if (lower.indexOf(\"claude\") !== -1 || lower.indexOf(\"anthropic\") !== -1) {\n        info.provider = \"anthropic\";\n        info.targetRoute = \"anthropic\";\n      } else if (lower.indexOf(\"gpt\") !== -1 || lower.indexOf(\"dall-e\") !== -1 || lower.indexOf(\"o1\") !== -1 || lower.indexOf(\"o3\") !== -1 || lower.indexOf(\"whisper\") !== -1 || lower.indexOf(\"tts\") !== -1) {\n        info.provider = \"openai\";\n        info.targetRoute = \"openai\";\n      } else {\n        info.provider = \"unknown\";\n      }\n      info.cleanModelName = cleanModel;\n    }\n\n    // C. Check config models for explicit targetRoute mapping or provider prefix mapping\n    if (parsedConfig && parsedConfig.models) {\n      if (parsedConfig.models[currentModel]) {\n        info.targetRoute = parsedConfig.models[currentModel];\n      } else if (parsedConfig.models[info.rawModelName]) {\n        info.targetRoute = parsedConfig.models[info.rawModelName];\n      } else if (parsedConfig.models[cleanModel]) {\n        info.targetRoute = parsedConfig.models[cleanModel];\n      } else if (info.provider && parsedConfig.models[info.provider + \"/\" + cleanModel]) {\n        info.targetRoute = parsedConfig.models[info.provider + \"/\" + cleanModel];\n      } else if (info.provider && parsedConfig.models[info.provider + \"/\"]) {\n        info.targetRoute = parsedConfig.models[info.provider + \"/\"];\n      } else if (info.provider && parsedConfig.models[info.provider]) {\n        info.targetRoute = parsedConfig.models[info.provider];\n      } else {\n        for (var mKey in parsedConfig.models) {\n          if (mKey.charAt(mKey.length - 1) === \"/\" && (currentModel.indexOf(mKey) === 0 || (info.provider + \"/\").indexOf(mKey) === 0)) {\n            info.targetRoute = parsedConfig.models[mKey];\n            break;\n          }\n        }\n      }\n    }\n\n    if (info.mappedModelName) {\n      info.modelName = cleanModel;\n    }\n  }\n\n  // 7. Method resolution based on provider and streaming\n  if (info.provider === \"anthropic\") {\n    info.method = info.isStreaming ? \"streamRawPredict\" : \"rawPredict\";\n  } else if (info.provider === \"google\") {\n    if (info.requestType === \"embeddings\") {\n      info.method = \"embedContent\";\n    } else if (info.isStreaming) {\n      info.method = \"streamGenerateContent\";\n    } else {\n      info.method = \"generateContent\";\n    }\n  }\n\n  return info;\n}\n\nfunction getTargetRoute(modelName, routingConfig) {\n  var info = getRequestInfo(\"\", { model: modelName }, \"\", routingConfig);\n  var result = {\n    provider: info.provider,\n    region: info.region,\n    cleanModelName: info.cleanModelName,\n    targetRoute: info.targetRoute\n  };\n  if (info.mappedModelName) {\n    result.mappedModelName = info.mappedModelName;\n  }\n  return result;\n}\n\nfunction setPrompt(contentData, userPrompt) {\n  if (!contentData) return contentData;\n\n  if (contentData[\"contents\"] && Array.isArray(contentData[\"contents\"])) {\n    // gemini format\n    for (var i = contentData[\"contents\"].length - 1; i >= 0; i--) {\n      var content = contentData[\"contents\"][i];\n      if (\n        content &&\n        content[\"role\"] &&\n        content[\"role\"].toLowerCase() === \"user\" &&\n        content[\"parts\"] &&\n        Array.isArray(content[\"parts\"])\n      ) {\n        for (var p = content[\"parts\"].length - 1; p >= 0; p--) {\n          if (content[\"parts\"][p] && content[\"parts\"][p][\"text\"] !== undefined) {\n            content[\"parts\"][p][\"text\"] = userPrompt;\n            return contentData;\n          }\n        }\n      }\n    }\n  } else if (contentData[\"messages\"] && Array.isArray(contentData[\"messages\"])) {\n    // openai / claude format\n    for (var j = contentData[\"messages\"].length - 1; j >= 0; j--) {\n      var message = contentData[\"messages\"][j];\n      if (message && message[\"role\"] && message[\"role\"].toLowerCase() === \"user\") {\n        if (typeof message[\"content\"] === \"string\") {\n          message[\"content\"] = userPrompt;\n          return contentData;\n        } else if (Array.isArray(message[\"content\"])) {\n          for (var c = message[\"content\"].length - 1; c >= 0; c--) {\n            var part = message[\"content\"][c];\n            if (part && (part[\"type\"] === \"text\" || typeof part === \"string\")) {\n              if (typeof part === \"string\") {\n                message[\"content\"][c] = userPrompt;\n              } else {\n                part[\"text\"] = userPrompt;\n              }\n              return contentData;\n            }\n          }\n        }\n      }\n    }\n  }\n\n  return contentData;\n}\n\nfunction getResponse(contentData) {\n  var responseText = \"\";\n  if (!contentData) return responseText;\n\n  if (contentData[\"candidates\"] && Array.isArray(contentData[\"candidates\"]) && contentData[\"candidates\"].length > 0) {\n    // gemini format\n    for (var i = contentData[\"candidates\"].length - 1; i >= 0; i--) {\n      var candidate = contentData[\"candidates\"][i];\n      if (\n        candidate &&\n        candidate[\"content\"] &&\n        candidate[\"content\"][\"parts\"] &&\n        Array.isArray(candidate[\"content\"][\"parts\"]) &&\n        candidate[\"content\"][\"parts\"].length > 0\n      ) {\n        for (var p = candidate[\"content\"][\"parts\"].length - 1; p >= 0; p--) {\n          var part = candidate[\"content\"][\"parts\"][p];\n          if (part && part[\"text\"]) {\n            responseText = part[\"text\"];\n            return responseText;\n          }\n        }\n      }\n    }\n  } else if (contentData[\"choices\"] && Array.isArray(contentData[\"choices\"]) && contentData[\"choices\"].length > 0) {\n    // openmodel / openai format\n    for (var j = contentData[\"choices\"].length - 1; j >= 0; j--) {\n      var choice = contentData[\"choices\"][j];\n      if (choice && choice[\"message\"] && choice[\"message\"][\"content\"]) {\n        responseText = choice[\"message\"][\"content\"];\n        return responseText;\n      }\n    }\n  } else if (contentData[\"content\"] && Array.isArray(contentData[\"content\"]) && contentData[\"content\"].length > 0) {\n    // claude format\n    for (var k = contentData[\"content\"].length - 1; k >= 0; k--) {\n      var contentItem = contentData[\"content\"][k];\n      if (contentItem && contentItem[\"type\"] === \"text\" && contentItem[\"text\"]) {\n        responseText = contentItem[\"text\"];\n        return responseText;\n      }\n    }\n  }\n\n  return responseText;\n}\n\nfunction setResponse(contentData, content) {\n  if (!contentData) return contentData;\n\n  if (contentData[\"candidates\"] && Array.isArray(contentData[\"candidates\"]) && contentData[\"candidates\"].length > 0) {\n    // gemini format\n    for (var i = contentData[\"candidates\"].length - 1; i >= 0; i--) {\n      var candidate = contentData[\"candidates\"][i];\n      if (\n        candidate &&\n        candidate[\"content\"] &&\n        candidate[\"content\"][\"parts\"] &&\n        Array.isArray(candidate[\"content\"][\"parts\"]) &&\n        candidate[\"content\"][\"parts\"].length > 0\n      ) {\n        for (var p = candidate[\"content\"][\"parts\"].length - 1; p >= 0; p--) {\n          var part = candidate[\"content\"][\"parts\"][p];\n          if (part && part[\"text\"] !== undefined) {\n            part[\"text\"] = content;\n            return contentData;\n          }\n        }\n      }\n    }\n  } else if (contentData[\"choices\"] && Array.isArray(contentData[\"choices\"]) && contentData[\"choices\"].length > 0) {\n    // openmodel / openai format\n    for (var j = contentData[\"choices\"].length - 1; j >= 0; j--) {\n      var choice = contentData[\"choices\"][j];\n      if (choice && choice[\"message\"]) {\n        choice[\"message\"][\"content\"] = content;\n        return contentData;\n      }\n    }\n  } else if (contentData[\"content\"] && Array.isArray(contentData[\"content\"]) && contentData[\"content\"].length > 0) {\n    // claude format\n    for (var k = contentData[\"content\"].length - 1; k >= 0; k--) {\n      var claudeContent = contentData[\"content\"][k];\n      if (claudeContent && claudeContent[\"type\"] === \"text\") {\n        claudeContent[\"text\"] = content;\n        return contentData;\n      }\n    }\n  }\n\n  return contentData;\n}\n\nfunction getUsageData(contentString) {\n  var usageData = {\n    model: \"\",\n    requestTokenCount: 0,\n    responseTokenCount: 0,\n    totalTokenCount: 0,\n    usageFound: false\n  };\n\n  if (!contentString) {\n    return usageData;\n  }\n\n  var cleaned = (typeof contentString === \"string\") ? contentString.trim() : \"\";\n  if (!cleaned && typeof contentString === \"object\") {\n    try {\n      cleaned = JSON.stringify(contentString);\n    } catch (e) {\n      return usageData;\n    }\n  }\n\n  // Return early for stream markers, ping events, or non-data frames to avoid JSON parse errors\n  if (\n    cleaned.indexOf(\"[DONE]\") !== -1 ||\n    cleaned.indexOf(\"message_stop\") !== -1 ||\n    cleaned.indexOf(\"content_block\") !== -1 ||\n    cleaned.indexOf(\"event: ping\") !== -1\n  ) {\n    return usageData;\n  }\n\n  // Extract last JSON object from data: lines if present\n  if (cleaned.indexOf(\"data:\") !== -1) {\n    var lines = cleaned.split(/\\r?\\n/);\n    for (var i = lines.length - 1; i >= 0; i--) {\n      var l = lines[i].trim();\n      if (l.indexOf(\"data:\") === 0) {\n        var candidate = l.substring(5).trim();\n        if (candidate.indexOf(\"{\") === 0) {\n          cleaned = candidate;\n          break;\n        }\n      }\n    }\n  } else if (cleaned.indexOf(\"event: \") === 0) {\n    var firstBrace = cleaned.indexOf(\"{\");\n    if (firstBrace !== -1) {\n      cleaned = cleaned.substring(firstBrace).trim();\n    }\n  }\n\n  if (!cleaned || cleaned.indexOf(\"{\") !== 0) {\n    return usageData;\n  }\n\n  try {\n    var contentData = JSON.parse(cleaned);\n\n    // model\n    if (contentData[\"model\"]) {\n      usageData.model = contentData[\"model\"];\n    }\n    if (contentData[\"modelVersion\"]) {\n      usageData.model = contentData[\"modelVersion\"];\n    }\n    if (contentData[\"message\"] && contentData[\"message\"][\"model\"]) {\n      usageData.model = contentData[\"message\"][\"model\"];\n    }\n    if (usageData.model && usageData.model.indexOf(\"/\") !== -1) {\n      var modelNamePieces = usageData.model.split(\"/\");\n      usageData.model = modelNamePieces[modelNamePieces.length - 1];\n    }\n\n    // requestTokenCount\n    // openmodels / openai\n    if (contentData[\"usage\"] && contentData[\"usage\"][\"prompt_tokens\"] !== undefined) {\n      usageData.requestTokenCount = contentData[\"usage\"][\"prompt_tokens\"];\n    }\n    // claude message.usage\n    if (\n      contentData[\"message\"] &&\n      contentData[\"message\"][\"usage\"] &&\n      contentData[\"message\"][\"usage\"][\"input_tokens\"] !== undefined\n    ) {\n      usageData.requestTokenCount = contentData[\"message\"][\"usage\"][\"input_tokens\"];\n    }\n    // claude top-level usage\n    if (contentData[\"usage\"] && contentData[\"usage\"][\"input_tokens\"] !== undefined) {\n      usageData.requestTokenCount = contentData[\"usage\"][\"input_tokens\"];\n    }\n    // gemini API\n    if (contentData[\"usageMetadata\"] && contentData[\"usageMetadata\"][\"promptTokenCount\"] !== undefined) {\n      usageData.requestTokenCount = contentData[\"usageMetadata\"][\"promptTokenCount\"];\n    }\n\n    // responseTokenCount\n    // openmodels / openai\n    if (contentData[\"usage\"] && contentData[\"usage\"][\"completion_tokens\"] !== undefined) {\n      usageData.responseTokenCount = contentData[\"usage\"][\"completion_tokens\"];\n    }\n    // claude message.usage\n    if (\n      contentData[\"message\"] &&\n      contentData[\"message\"][\"usage\"] &&\n      contentData[\"message\"][\"usage\"][\"output_tokens\"] !== undefined\n    ) {\n      usageData.responseTokenCount = contentData[\"message\"][\"usage\"][\"output_tokens\"];\n    }\n    // claude top-level usage\n    if (contentData[\"usage\"] && contentData[\"usage\"][\"output_tokens\"] !== undefined) {\n      usageData.responseTokenCount = contentData[\"usage\"][\"output_tokens\"];\n    }\n    // gemini API\n    if (contentData[\"usageMetadata\"] && contentData[\"usageMetadata\"][\"candidatesTokenCount\"] !== undefined) {\n      usageData.responseTokenCount = contentData[\"usageMetadata\"][\"candidatesTokenCount\"];\n    }\n\n    // fallback for reasoning_tokens / thoughtsTokenCount if no other response tokens found\n    if (!usageData.responseTokenCount) {\n      if (\n        contentData[\"usage\"] &&\n        contentData[\"usage\"][\"completion_tokens_details\"] &&\n        contentData[\"usage\"][\"completion_tokens_details\"][\"reasoning_tokens\"] !== undefined\n      ) {\n        usageData.responseTokenCount = contentData[\"usage\"][\"completion_tokens_details\"][\"reasoning_tokens\"];\n      } else if (\n        contentData[\"message\"] &&\n        contentData[\"message\"][\"usage\"] &&\n        contentData[\"message\"][\"usage\"][\"completion_tokens_details\"] &&\n        contentData[\"message\"][\"usage\"][\"completion_tokens_details\"][\"reasoning_tokens\"] !== undefined\n      ) {\n        usageData.responseTokenCount = contentData[\"message\"][\"usage\"][\"completion_tokens_details\"][\"reasoning_tokens\"];\n      } else if (\n        contentData[\"usageMetadata\"] &&\n        contentData[\"usageMetadata\"][\"thoughtsTokenCount\"] !== undefined\n      ) {\n        usageData.responseTokenCount = contentData[\"usageMetadata\"][\"thoughtsTokenCount\"];\n      }\n    }\n\n    if (usageData.requestTokenCount > 0 || usageData.responseTokenCount > 0) {\n      usageData.usageFound = true;\n    }\n    usageData.totalTokenCount = usageData.requestTokenCount + usageData.responseTokenCount;\n  } catch (e) {\n    if (typeof print === \"function\") {\n      print(\"Exception in getUsageData: \" + JSON.stringify(e));\n    }\n  }\n\n  return usageData;\n}\n\nfunction testAllowedModels(requestInfo) {\n  var result = true;\n  if (!requestInfo) return result;\n  if (requestInfo.allowedModelPatterns && requestInfo.allowedModelPatterns !== \"ALL\") {\n    result = false;\n    var patterns = requestInfo.allowedModelPatterns.split(\";\");\n    for (var i = 0; i < patterns.length; i++) {\n      var pattern = patterns[i];\n      if (!pattern) continue;\n      if (requestInfo.type === \"googlecloud\") {\n        if (requestInfo.url && requestInfo.url.indexOf(pattern) !== -1) {\n          result = true;\n          break;\n        }\n      } else if (requestInfo.type === \"oai\" && requestInfo.requestContent && requestInfo.requestContent[\"model\"]) {\n        if (requestInfo.requestContent[\"model\"].indexOf(pattern) !== -1) {\n          result = true;\n          break;\n        }\n      }\n    }\n  }\n  return result;\n}\n\nfunction testDeniedModels(requestInfo) {\n  var result = true;\n  if (!requestInfo) return result;\n  if (requestInfo.deniedModelPatterns && requestInfo.deniedModelPatterns !== \"NONE\") {\n    var patterns = requestInfo.deniedModelPatterns.split(\";\");\n    for (var i = 0; i < patterns.length; i++) {\n      var pattern = patterns[i];\n      if (!pattern) continue;\n      if (requestInfo.type === \"googlecloud\") {\n        if (requestInfo.url && requestInfo.url.indexOf(pattern) !== -1) {\n          result = false;\n          break;\n        }\n      } else if (requestInfo.type === \"oai\" && requestInfo.requestContent && requestInfo.requestContent[\"model\"]) {\n        if (requestInfo.requestContent[\"model\"].indexOf(pattern) !== -1) {\n          result = false;\n          break;\n        }\n      } else if (requestInfo.type === \"oai\") {\n        result = false;\n        break;\n      }\n    }\n  }\n  return result;\n}\n\nfunction convertOpenAiToGemini(openAiPayload) {\n  if (!openAiPayload) return {};\n\n  var geminiPayload = {\n    contents: []\n  };\n\n  if (openAiPayload.messages && Array.isArray(openAiPayload.messages)) {\n    var systemInstructionParts = [];\n\n    for (var i = 0; i < openAiPayload.messages.length; i++) {\n      var msg = openAiPayload.messages[i];\n      if (!msg) continue;\n      var role = msg.role;\n      var content = msg.content;\n\n      if (role === \"system\" || role === \"developer\") {\n        if (typeof content === \"string\") {\n          systemInstructionParts.push({ text: content });\n        } else if (Array.isArray(content)) {\n          for (var j = 0; j < content.length; j++) {\n            if (content[j] && content[j].type === \"text\" && content[j].text) {\n              systemInstructionParts.push({ text: content[j].text });\n            } else if (typeof content[j] === \"string\") {\n              systemInstructionParts.push({ text: content[j] });\n            }\n          }\n        }\n      } else {\n        var geminiRole = (role === \"assistant\") ? \"model\" : \"user\";\n        var parts = [];\n\n        if (typeof content === \"string\") {\n          parts.push({ text: content });\n        } else if (Array.isArray(content)) {\n          for (var k = 0; k < content.length; k++) {\n            if (content[k] && content[k].type === \"text\" && content[k].text) {\n              parts.push({ text: content[k].text });\n            } else if (typeof content[k] === \"string\") {\n              parts.push({ text: content[k] });\n            }\n          }\n        }\n\n        if (parts.length > 0) {\n          geminiPayload.contents.push({\n            role: geminiRole,\n            parts: parts\n          });\n        }\n      }\n    }\n\n    if (systemInstructionParts.length > 0) {\n      geminiPayload.systemInstruction = {\n        parts: systemInstructionParts\n      };\n    }\n  }\n\n  var generationConfig = {};\n  if (openAiPayload.temperature !== undefined) generationConfig.temperature = openAiPayload.temperature;\n  if (openAiPayload.top_p !== undefined) generationConfig.topP = openAiPayload.top_p;\n  if (openAiPayload.max_tokens !== undefined) generationConfig.maxOutputTokens = openAiPayload.max_tokens;\n  else if (openAiPayload.max_completion_tokens !== undefined) generationConfig.maxOutputTokens = openAiPayload.max_completion_tokens;\n  if (openAiPayload.stop !== undefined) {\n    generationConfig.stopSequences = Array.isArray(openAiPayload.stop) ? openAiPayload.stop : [openAiPayload.stop];\n  }\n\n  if (Object.keys(generationConfig).length > 0) {\n    geminiPayload.generationConfig = generationConfig;\n  }\n\n  return geminiPayload;\n}\n\nfunction convertGeminiToOpenAi(geminiResponse, modelName) {\n  if (!geminiResponse) return {};\n\n  var openAiResponse = {\n    id: \"chatcmpl-\" + Math.random().toString(36).substring(2, 11),\n    object: \"chat.completion\",\n    created: Math.floor(Date.now() / 1000),\n    model: modelName || \"gemini\",\n    choices: [],\n    usage: {\n      prompt_tokens: 0,\n      completion_tokens: 0,\n      total_tokens: 0\n    }\n  };\n\n  if (geminiResponse.candidates && Array.isArray(geminiResponse.candidates)) {\n    for (var i = 0; i < geminiResponse.candidates.length; i++) {\n      var candidate = geminiResponse.candidates[i];\n      var text = \"\";\n\n      if (candidate.content && candidate.content.parts && Array.isArray(candidate.content.parts)) {\n        for (var p = 0; p < candidate.content.parts.length; p++) {\n          if (candidate.content.parts[p] && candidate.content.parts[p].text) {\n            text += candidate.content.parts[p].text;\n          }\n        }\n      }\n\n      var finishReason = \"stop\";\n      if (candidate.finishReason) {\n        if (candidate.finishReason === \"MAX_TOKENS\") finishReason = \"length\";\n        else if (candidate.finishReason === \"SAFETY\") finishReason = \"content_filter\";\n        else finishReason = candidate.finishReason.toLowerCase();\n      }\n\n      openAiResponse.choices.push({\n        index: candidate.index !== undefined ? candidate.index : i,\n        message: {\n          role: \"assistant\",\n          content: text\n        },\n        finish_reason: finishReason\n      });\n    }\n  }\n\n  if (geminiResponse.usageMetadata) {\n    var promptTokens = geminiResponse.usageMetadata.promptTokenCount || 0;\n    var completionTokens = geminiResponse.usageMetadata.candidatesTokenCount || 0;\n    var totalTokens = geminiResponse.usageMetadata.totalTokenCount || (promptTokens + completionTokens);\n\n    openAiResponse.usage = {\n      prompt_tokens: promptTokens,\n      completion_tokens: completionTokens,\n      total_tokens: totalTokens\n    };\n  }\n\n  return openAiResponse;\n}\n\nfunction convertOpenAiToGeminiAudio(openAiPayload) {\n  if (!openAiPayload) return {};\n\n  var inputText = \"\";\n  if (typeof openAiPayload.input === \"string\") {\n    inputText = openAiPayload.input;\n  } else if (Array.isArray(openAiPayload.input)) {\n    inputText = openAiPayload.input.join(\" \");\n  } else if (typeof openAiPayload.prompt === \"string\") {\n    inputText = openAiPayload.prompt;\n  }\n\n  var voiceMap = {\n    \"alloy\": \"Puck\",\n    \"echo\": \"Charon\",\n    \"fable\": \"Kore\",\n    \"onyx\": \"Fenrir\",\n    \"nova\": \"Aoede\",\n    \"shimmer\": \"Kore\",\n    \"ash\": \"Puck\",\n    \"coral\": \"Kore\",\n    \"sage\": \"Charon\",\n    \"verse\": \"Fenrir\"\n  };\n\n  var rawVoice = openAiPayload.voice || \"alloy\";\n  var voiceName = \"Puck\";\n  if (rawVoice && voiceMap[rawVoice.toLowerCase()]) {\n    voiceName = voiceMap[rawVoice.toLowerCase()];\n  } else if (rawVoice) {\n    voiceName = rawVoice;\n  }\n\n  return {\n    contents: [\n      {\n        role: \"user\",\n        parts: [\n          { text: inputText }\n        ]\n      }\n    ],\n    generation_config: {\n      response_modalities: [\"AUDIO\"],\n      speech_config: {\n        voice_config: {\n          prebuilt_voice_config: {\n            voice_name: voiceName\n          }\n        }\n      }\n    }\n  };\n}\n\nfunction convertGeminiAudioToOpenAi(geminiResponse) {\n  var responseData = geminiResponse;\n  if (typeof geminiResponse === \"string\") {\n    try {\n      responseData = JSON.parse(geminiResponse);\n    } catch (e) {}\n  }\n\n  var base64Data = \"\";\n  var mimeType = \"audio/mpeg\";\n\n  if (responseData && responseData.candidates && Array.isArray(responseData.candidates) && responseData.candidates.length > 0) {\n    var cand = responseData.candidates[0];\n    if (cand && cand.content && cand.content.parts && Array.isArray(cand.content.parts) && cand.content.parts.length > 0) {\n      for (var i = 0; i < cand.content.parts.length; i++) {\n        var part = cand.content.parts[i];\n        if (part) {\n          var inline = part.inlineData || part.inline_data;\n          if (inline && inline.data) {\n            base64Data = inline.data;\n            if (inline.mimeType) {\n              mimeType = inline.mimeType;\n            } else if (inline.mime_type) {\n              mimeType = inline.mime_type;\n            }\n            break;\n          }\n        }\n      }\n    }\n  }\n\n  return {\n    base64Data: base64Data,\n    mimeType: mimeType\n  };\n}\n\nfunction parseMultipartFormData(body, contentType) {\n  var result = {\n    model: \"\",\n    prompt: \"\",\n    language: \"\",\n    fileMimeType: \"audio/mp3\",\n    fileBase64: \"\"\n  };\n\n  if (!body) return result;\n\n  var strBody = typeof body === \"string\" ? body : String(body);\n\n  var boundary = \"\";\n  if (contentType && contentType.indexOf(\"boundary=\") !== -1) {\n    var rawBoundary = contentType.split(\"boundary=\")[1].split(\";\")[0].trim();\n    if ((rawBoundary.indexOf('\"') === 0 && rawBoundary.lastIndexOf('\"') === rawBoundary.length - 1) ||\n        (rawBoundary.indexOf(\"'\") === 0 && rawBoundary.lastIndexOf(\"'\") === rawBoundary.length - 1)) {\n      rawBoundary = rawBoundary.substring(1, rawBoundary.length - 1);\n    }\n    boundary = \"--\" + rawBoundary;\n  } else if (typeof strBody === \"string\" && strBody.indexOf(\"--\") === 0) {\n    var firstLineEnd = strBody.indexOf(\"\\r\\n\");\n    if (firstLineEnd === -1) firstLineEnd = strBody.indexOf(\"\\n\");\n    if (firstLineEnd !== -1) {\n      boundary = strBody.substring(0, firstLineEnd).trim();\n    }\n  }\n\n  if (!boundary) return result;\n\n  var parts = strBody.split(boundary);\n  for (var i = 0; i < parts.length; i++) {\n    var part = parts[i];\n    if (!part || part === \"--\" || part === \"--\\r\\n\" || part === \"--\\n\") continue;\n\n    var headerEndIndex = part.indexOf(\"\\r\\n\\r\\n\");\n    var delimiterLength = 4;\n    if (headerEndIndex === -1) {\n      headerEndIndex = part.indexOf(\"\\n\\n\");\n      delimiterLength = 2;\n    }\n\n    if (headerEndIndex === -1) continue;\n\n    var headersText = part.substring(0, headerEndIndex);\n    var bodyText = part.substring(headerEndIndex + delimiterLength);\n\n    if (bodyText.lastIndexOf(\"\\r\\n\") === bodyText.length - 2 && bodyText.length >= 2) {\n      bodyText = bodyText.substring(0, bodyText.length - 2);\n    } else if (bodyText.lastIndexOf(\"\\n\") === bodyText.length - 1 && bodyText.length >= 1) {\n      bodyText = bodyText.substring(0, bodyText.length - 1);\n    }\n\n    var nameMatch = headersText.match(/name=\"([^\"]+)\"/i);\n    var fieldName = nameMatch ? nameMatch[1] : \"\";\n\n    if (fieldName === \"model\") {\n      result.model = bodyText.trim();\n    } else if (fieldName === \"prompt\") {\n      result.prompt = bodyText.trim();\n    } else if (fieldName === \"language\") {\n      result.language = bodyText.trim();\n    } else if (fieldName === \"file\") {\n      var contentTypeMatch = headersText.match(/Content-Type:\\s*([^\\r\\n;]+)/i);\n      if (contentTypeMatch) {\n        result.fileMimeType = contentTypeMatch[1].trim();\n      }\n      result.fileBase64 = encodeBytesToBase64(bodyText);\n    }\n  }\n\n  return result;\n}\n\nfunction convertOpenAiMultipartToGemini(multipartData) {\n  if (!multipartData) return {};\n\n  var mimeType = multipartData.fileMimeType || \"audio/mp3\";\n  var base64Data = multipartData.fileBase64 || \"\";\n  var promptText = multipartData.prompt || \"Transcribe this audio file accurately.\";\n\n  if (multipartData.language) {\n    promptText += \" The spoken language is \" + multipartData.language + \".\";\n  }\n\n  var parts = [];\n  if (base64Data) {\n    parts.push({\n      inlineData: {\n        mimeType: mimeType,\n        data: base64Data\n      }\n    });\n  }\n\n  parts.push({\n    text: promptText\n  });\n\n  return {\n    contents: [\n      {\n        role: \"user\",\n        parts: parts\n      }\n    ]\n  };\n}\n\nfunction convertOpenAiToGeminiEmbeddings(openAiPayload) {\n  if (!openAiPayload) return { content: { parts: [] } };\n\n  var rawInput = openAiPayload.input || \"\";\n  var textStr = \"\";\n\n  if (Array.isArray(rawInput)) {\n    textStr = rawInput.length > 0 ? (typeof rawInput[0] === \"string\" ? rawInput[0] : JSON.stringify(rawInput[0])) : \"\";\n  } else if (typeof rawInput === \"string\") {\n    textStr = rawInput;\n  }\n\n  return {\n    content: {\n      parts: [\n        { text: textStr }\n      ]\n    }\n  };\n}\n\nfunction convertGeminiEmbeddingsToOpenAi(geminiResponse, modelName) {\n  if (!geminiResponse) return { object: \"list\", data: [], model: modelName || \"gemini-embedding\" };\n\n  var values = [];\n  if (geminiResponse.embedding && geminiResponse.embedding.values) {\n    values = geminiResponse.embedding.values;\n  } else if (geminiResponse.predictions && Array.isArray(geminiResponse.predictions) && geminiResponse.predictions.length > 0) {\n    var pred = geminiResponse.predictions[0];\n    if (pred.embeddings && pred.embeddings.values) {\n      values = pred.embeddings.values;\n    } else if (pred.values) {\n      values = pred.values;\n    }\n  }\n\n  return {\n    object: \"list\",\n    data: [\n      {\n        object: \"embedding\",\n        index: 0,\n        embedding: values\n      }\n    ],\n    model: modelName || \"gemini-embedding\",\n    usage: {\n      prompt_tokens: 0,\n      total_tokens: 0\n    }\n  };\n}\n\nfunction convertOpenAiToImagen(openAiPayload) {\n  if (!openAiPayload) return { instances: [] };\n\n  var promptText = openAiPayload.prompt || \"\";\n  var sampleCount = openAiPayload.n || 1;\n\n  var parameters = {};\n  if (openAiPayload.response_format === \"b64_json\") {\n    parameters.outputOptions = { mimeType: \"image/jpeg\" };\n  }\n  if (openAiPayload.aspect_ratio) {\n    parameters.aspectRatio = openAiPayload.aspect_ratio;\n  }\n  if (sampleCount) {\n    parameters.sampleCount = sampleCount;\n  }\n\n  return {\n    instances: [{ prompt: promptText }],\n    parameters: parameters\n  };\n}\n\nfunction convertOpenAiToGeminiImage(openAiPayload) {\n  if (!openAiPayload) return { contents: [] };\n\n  var promptText = openAiPayload.prompt || \"\";\n  var config = {\n    responseModalities: [\"IMAGE\"]\n  };\n\n  if (openAiPayload.aspect_ratio) {\n    config.aspectRatio = openAiPayload.aspect_ratio;\n  }\n\n  return {\n    contents: [\n      {\n        role: \"user\",\n        parts: [\n          { text: promptText }\n        ]\n      }\n    ],\n    generationConfig: config\n  };\n}\n\nfunction convertImagenToOpenAi(imagenResponse, modelName) {\n  if (!imagenResponse) return { created: Math.floor(Date.now() / 1000), data: [] };\n\n  var openAiResponse = {\n    created: Math.floor(Date.now() / 1000),\n    data: []\n  };\n\n  if (imagenResponse.predictions && Array.isArray(imagenResponse.predictions)) {\n    for (var i = 0; i < imagenResponse.predictions.length; i++) {\n      var pred = imagenResponse.predictions[i];\n      if (pred && pred.bytesBase64Encoded) {\n        openAiResponse.data.push({\n          b64_json: pred.bytesBase64Encoded\n        });\n      } else if (pred && pred.gcsUri) {\n        openAiResponse.data.push({\n          url: pred.gcsUri\n        });\n      }\n    }\n  } else if (imagenResponse.candidates && Array.isArray(imagenResponse.candidates)) {\n    for (var c = 0; c < imagenResponse.candidates.length; c++) {\n      var cand = imagenResponse.candidates[c];\n      if (cand && cand.content && cand.content.parts && Array.isArray(cand.content.parts)) {\n        for (var p = 0; p < cand.content.parts.length; p++) {\n          var part = cand.content.parts[p];\n          if (part) {\n            var inline = part.inlineData || part.inline_data;\n            if (inline && inline.data) {\n              openAiResponse.data.push({\n                b64_json: inline.data\n              });\n            }\n          }\n        }\n      }\n    }\n  }\n\n  return openAiResponse;\n}\n\nfunction convertOpenAiToAnthropic(openAiPayload, routeInfo) {\n  if (!openAiPayload) return {};\n\n  var targetModel = openAiPayload.model || \"\";\n  if (routeInfo) {\n    if (typeof routeInfo === \"string\") {\n      targetModel = routeInfo;\n    } else if (typeof routeInfo === \"object\") {\n      if (routeInfo.cleanModelName) {\n        targetModel = routeInfo.cleanModelName;\n      } else if (routeInfo.mappedModelName) {\n        targetModel = routeInfo.mappedModelName;\n      }\n    }\n  }\n\n  if (targetModel && targetModel.indexOf(\"/\") !== -1) {\n    var parts = targetModel.split(\"/\");\n    targetModel = parts[parts.length - 1];\n  }\n\n  var anthropicPayload = {\n    model: targetModel,\n    messages: [],\n    max_tokens: openAiPayload.max_tokens || openAiPayload.max_completion_tokens || 4096\n  };\n\n  var targetRoute = \"\";\n  if (routeInfo) {\n    if (typeof routeInfo === \"string\") {\n      targetRoute = routeInfo;\n    } else if (typeof routeInfo === \"object\" && routeInfo.targetRoute) {\n      targetRoute = routeInfo.targetRoute;\n    }\n  }\n\n  var lowerRoute = targetRoute.toLowerCase();\n  if (!lowerRoute || lowerRoute.indexOf(\"google\") !== -1) {\n    anthropicPayload[\"anthropic_version\"] = \"vertex-2023-10-16\";\n    delete anthropicPayload.model;\n  } else if (lowerRoute.indexOf(\"aws\") !== -1 || lowerRoute.indexOf(\"bedrock\") !== -1) {\n    anthropicPayload[\"anthropic_version\"] = \"bedrock-2023-05-31\";\n    delete anthropicPayload.model;\n  }\n\n  var systemPrompts = [];\n\n  if (openAiPayload.messages && Array.isArray(openAiPayload.messages)) {\n    for (var i = 0; i < openAiPayload.messages.length; i++) {\n      var msg = openAiPayload.messages[i];\n      if (!msg) continue;\n      var role = msg.role;\n      var content = msg.content;\n\n      if (role === \"system\" || role === \"developer\") {\n        if (typeof content === \"string\") {\n          systemPrompts.push(content);\n        } else if (Array.isArray(content)) {\n          for (var j = 0; j < content.length; j++) {\n            if (content[j] && content[j].type === \"text\" && content[j].text) {\n              systemPrompts.push(content[j].text);\n            } else if (typeof content[j] === \"string\") {\n              systemPrompts.push(content[j]);\n            }\n          }\n        }\n      } else {\n        var anthropicRole = (role === \"assistant\") ? \"assistant\" : \"user\";\n        var anthropicContent = content;\n\n        if (Array.isArray(content)) {\n          var formattedParts = [];\n          for (var k = 0; k < content.length; k++) {\n            var part = content[k];\n            if (part) {\n              if (part.type === \"text\") {\n                formattedParts.push({ type: \"text\", text: part.text || \"\" });\n              } else if (part.type === \"image_url\" && part.image_url) {\n                var urlStr = typeof part.image_url === \"string\" ? part.image_url : part.image_url.url;\n                if (urlStr && urlStr.indexOf(\"data:\") === 0) {\n                  var matches = urlStr.match(/^data:(image\\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);\n                  if (matches) {\n                    formattedParts.push({\n                      type: \"image\",\n                      source: {\n                        type: \"base64\",\n                        media_type: matches[1],\n                        data: matches[2]\n                      }\n                    });\n                  }\n                }\n              } else if (typeof part === \"string\") {\n                formattedParts.push({ type: \"text\", text: part });\n              }\n            }\n          }\n          anthropicContent = formattedParts;\n        }\n\n        anthropicPayload.messages.push({\n          role: anthropicRole,\n          content: anthropicContent\n        });\n      }\n    }\n  }\n\n  if (systemPrompts.length > 0) {\n    anthropicPayload.system = systemPrompts.join(\"\\n\\n\");\n  }\n\n  if (openAiPayload.temperature !== undefined) anthropicPayload.temperature = openAiPayload.temperature;\n  if (openAiPayload.top_p !== undefined) anthropicPayload.top_p = openAiPayload.top_p;\n  if (openAiPayload.stream !== undefined) anthropicPayload.stream = openAiPayload.stream;\n  if (openAiPayload.stop !== undefined) {\n    anthropicPayload.stop_sequences = Array.isArray(openAiPayload.stop) ? openAiPayload.stop : [openAiPayload.stop];\n  }\n\n  return anthropicPayload;\n}\n\nfunction convertAnthropicToOpenAi(anthropicData, modelName) {\n  var usageData = {\n    model: modelName || \"\",\n    requestTokenCount: 0,\n    responseTokenCount: 0,\n    totalTokenCount: 0,\n    usageFound: false\n  };\n\n  if (!anthropicData) {\n    return { contentString: \"\", usageData: usageData };\n  }\n\n  var data = anthropicData;\n  if (typeof anthropicData === \"string\") {\n    try {\n      data = JSON.parse(anthropicData);\n    } catch (e) {\n      return { contentString: anthropicData, usageData: usageData };\n    }\n  }\n\n  var text = \"\";\n  if (data.content && Array.isArray(data.content)) {\n    for (var i = 0; i < data.content.length; i++) {\n      var item = data.content[i];\n      if (item && item.type === \"text\" && item.text) {\n        text += item.text;\n      }\n    }\n  } else if (typeof data.content === \"string\") {\n    text = data.content;\n  }\n\n  var finishReason = \"stop\";\n  if (data.stop_reason) {\n    if (data.stop_reason === \"max_tokens\") finishReason = \"length\";\n    else if (data.stop_reason === \"end_turn\" || data.stop_reason === \"stop_sequence\") finishReason = \"stop\";\n    else finishReason = data.stop_reason.toLowerCase();\n  }\n\n  var msgId = data.id ? (\"chatcmpl-\" + data.id.replace(/^msg_/, \"\")) : (\"chatcmpl-\" + Math.random().toString(36).substring(2, 11));\n\n  var promptTokens = (data.usage && data.usage.input_tokens !== undefined) ? data.usage.input_tokens : 0;\n  var completionTokens = (data.usage && data.usage.output_tokens !== undefined) ? data.usage.output_tokens : 0;\n\n  var openAiResponse = {\n    id: msgId,\n    object: \"chat.completion\",\n    created: Math.floor(Date.now() / 1000),\n    model: modelName || data.model || \"claude\",\n    choices: [\n      {\n        index: 0,\n        message: {\n          role: \"assistant\",\n          content: text\n        },\n        finish_reason: finishReason\n      }\n    ],\n    usage: {\n      prompt_tokens: promptTokens,\n      completion_tokens: completionTokens,\n      total_tokens: promptTokens + completionTokens\n    }\n  };\n\n  usageData.model = modelName || data.model || \"claude\";\n  usageData.requestTokenCount = promptTokens;\n  usageData.responseTokenCount = completionTokens;\n  usageData.totalTokenCount = promptTokens + completionTokens;\n  if (promptTokens > 0 || completionTokens > 0) {\n    usageData.usageFound = true;\n  }\n\n  return {\n    contentString: JSON.stringify(openAiResponse),\n    usageData: usageData,\n    openAiResponse: openAiResponse\n  };\n}\n\nfunction convertAnthropicStreamToOpenAi(contentString, modelName, streamMessageId) {\n  var usageData = {\n    model: modelName || \"\",\n    requestTokenCount: 0,\n    responseTokenCount: 0,\n    totalTokenCount: 0,\n    usageFound: false\n  };\n\n  if (!contentString) {\n    return { contentString: \"\", usageData: usageData, messageId: streamMessageId || \"\" };\n  }\n\n  var activeMsgId = streamMessageId || \"\";\n  if (!activeMsgId && typeof context !== \"undefined\" && context && context.getVariable) {\n    activeMsgId = context.getVariable(\"ai.streamMessageId\") || \"\";\n  }\n\n  var rawBlocks = contentString.split(/\\r?\\n\\r?\\n/);\n  var outputChunks = [];\n\n  for (var b = 0; b < rawBlocks.length; b++) {\n    var raw = rawBlocks[b].trim();\n    if (!raw) continue;\n\n    if (raw.indexOf(\"message_stop\") !== -1 || raw.indexOf(\"[DONE]\") !== -1) {\n      outputChunks.push(\"data: [DONE]\");\n      continue;\n    }\n\n    var eventType = \"\";\n    var dataLines = [];\n    var lines = raw.split(/\\r?\\n/);\n\n    for (var l = 0; l < lines.length; l++) {\n      var line = lines[l].trim();\n      if (line.indexOf(\"event:\") === 0) {\n        eventType = line.substring(6).trim();\n      } else if (line.indexOf(\"data:\") === 0) {\n        dataLines.push(line.substring(5).trim());\n      } else if (dataLines.length > 0 && line) {\n        dataLines.push(line);\n      }\n    }\n\n    var dataStr = dataLines.join(\"\").trim();\n\n    if (!dataStr && raw.indexOf(\"{\") === 0) {\n      dataStr = raw.trim();\n    }\n\n    var eventData = null;\n    if (dataStr) {\n      try {\n        eventData = JSON.parse(dataStr);\n      } catch (e) {}\n    }\n\n    if (!eventData) {\n      continue;\n    }\n\n    try {\n      var type = eventType || eventData.type || \"\";\n      var created = Math.floor(Date.now() / 1000);\n      var model = modelName || eventData.model || \"claude\";\n\n      if (type === \"message_start\" && eventData.message) {\n        if (eventData.message.id) {\n          activeMsgId = \"chatcmpl-\" + eventData.message.id.replace(/^msg_/, \"\");\n        } else if (!activeMsgId) {\n          activeMsgId = \"chatcmpl-\" + Math.random().toString(36).substring(2, 11);\n        }\n        if (typeof context !== \"undefined\" && context && context.setVariable) {\n          context.setVariable(\"ai.streamMessageId\", activeMsgId);\n        }\n\n        var startChunk = {\n          id: activeMsgId,\n          object: \"chat.completion.chunk\",\n          created: created,\n          model: eventData.message.model || model,\n          choices: [\n            {\n              index: 0,\n              delta: { role: \"assistant\", content: \"\" },\n              finish_reason: null\n            }\n          ]\n        };\n\n        if (eventData.message.usage) {\n          var pTok = eventData.message.usage.input_tokens !== undefined ? eventData.message.usage.input_tokens : 0;\n          var cTok = eventData.message.usage.output_tokens !== undefined ? eventData.message.usage.output_tokens : 0;\n          startChunk.usage = {\n            prompt_tokens: pTok,\n            completion_tokens: cTok,\n            total_tokens: pTok + cTok\n          };\n          usageData.requestTokenCount = pTok;\n          usageData.responseTokenCount = cTok;\n          usageData.totalTokenCount = pTok + cTok;\n          if (pTok > 0 || cTok > 0) {\n            usageData.usageFound = true;\n          }\n        }\n\n        outputChunks.push(\"data: \" + JSON.stringify(startChunk));\n        continue;\n      }\n\n      if (!activeMsgId) {\n        activeMsgId = \"chatcmpl-\" + Math.random().toString(36).substring(2, 11);\n      }\n\n      if (type === \"content_block_start\" && eventData.content_block) {\n        var cb = eventData.content_block;\n        var blockIndex = eventData.index || 0;\n\n        if (cb.type === \"tool_use\") {\n          var toolStartChunk = {\n            id: activeMsgId,\n            object: \"chat.completion.chunk\",\n            created: created,\n            model: model,\n            choices: [\n              {\n                index: 0,\n                delta: {\n                  tool_calls: [\n                    {\n                      index: blockIndex,\n                      id: cb.id || \"\",\n                      type: \"function\",\n                      function: {\n                        name: cb.name || \"\",\n                        arguments: \"\"\n                      }\n                    }\n                  ]\n                },\n                finish_reason: null\n              }\n            ]\n          };\n          outputChunks.push(\"data: \" + JSON.stringify(toolStartChunk));\n        } else if (cb.type === \"text\" && cb.text) {\n          var textStartChunk = {\n            id: activeMsgId,\n            object: \"chat.completion.chunk\",\n            created: created,\n            model: model,\n            choices: [\n              {\n                index: 0,\n                delta: { content: cb.text },\n                finish_reason: null\n              }\n            ]\n          };\n          outputChunks.push(\"data: \" + JSON.stringify(textStartChunk));\n        }\n        continue;\n      }\n\n      if (type === \"content_block_delta\" && eventData.delta) {\n        var deltaObj = eventData.delta;\n        var blockIdx = eventData.index || 0;\n\n        if (deltaObj.type === \"text_delta\" && deltaObj.text !== undefined) {\n          var deltaChunk = {\n            id: activeMsgId,\n            object: \"chat.completion.chunk\",\n            created: created,\n            model: model,\n            choices: [\n              {\n                index: 0,\n                delta: { content: deltaObj.text },\n                finish_reason: null\n              }\n            ]\n          };\n          outputChunks.push(\"data: \" + JSON.stringify(deltaChunk));\n        } else if (deltaObj.type === \"thinking_delta\" && deltaObj.thinking !== undefined) {\n          var thinkingChunk = {\n            id: activeMsgId,\n            object: \"chat.completion.chunk\",\n            created: created,\n            model: model,\n            choices: [\n              {\n                index: 0,\n                delta: { reasoning_content: deltaObj.thinking },\n                finish_reason: null\n              }\n            ]\n          };\n          outputChunks.push(\"data: \" + JSON.stringify(thinkingChunk));\n        } else if (deltaObj.type === \"input_json_delta\" && deltaObj.partial_json !== undefined) {\n          var toolDeltaChunk = {\n            id: activeMsgId,\n            object: \"chat.completion.chunk\",\n            created: created,\n            model: model,\n            choices: [\n              {\n                index: 0,\n                delta: {\n                  tool_calls: [\n                    {\n                      index: blockIdx,\n                      function: { arguments: deltaObj.partial_json }\n                    }\n                  ]\n                },\n                finish_reason: null\n              }\n            ]\n          };\n          outputChunks.push(\"data: \" + JSON.stringify(toolDeltaChunk));\n        }\n        continue;\n      }\n\n      if (type === \"content_block_stop\") {\n        continue;\n      }\n\n      if (type === \"message_delta\" && eventData.delta) {\n        var stopReason = eventData.delta.stop_reason;\n        var finishReason = \"stop\";\n        if (stopReason === \"max_tokens\") finishReason = \"length\";\n        else if (stopReason === \"end_turn\" || stopReason === \"stop_sequence\") finishReason = \"stop\";\n        else if (stopReason === \"tool_use\") finishReason = \"tool_calls\";\n        else if (stopReason) finishReason = stopReason.toLowerCase();\n\n        if (eventData.usage) {\n          if (eventData.usage.input_tokens !== undefined) {\n            usageData.requestTokenCount = eventData.usage.input_tokens;\n          }\n          if (eventData.usage.output_tokens !== undefined) {\n            usageData.responseTokenCount = eventData.usage.output_tokens;\n          }\n          usageData.totalTokenCount = usageData.requestTokenCount + usageData.responseTokenCount;\n          if (usageData.requestTokenCount > 0 || usageData.responseTokenCount > 0) {\n            usageData.usageFound = true;\n          }\n        }\n\n        var stopChunk = {\n          id: activeMsgId,\n          object: \"chat.completion.chunk\",\n          created: created,\n          model: model,\n          choices: [\n            {\n              index: 0,\n              delta: {},\n              finish_reason: finishReason\n            }\n          ]\n        };\n\n        if (usageData.usageFound) {\n          stopChunk.usage = {\n            prompt_tokens: usageData.requestTokenCount,\n            completion_tokens: usageData.responseTokenCount,\n            total_tokens: usageData.totalTokenCount\n          };\n        }\n\n        outputChunks.push(\"data: \" + JSON.stringify(stopChunk));\n        continue;\n      }\n\n      if (type === \"ping\") {\n        continue;\n      }\n\n    } catch (e) {}\n  }\n\n  return {\n    contentString: outputChunks.join(\"\\n\\n\"),\n    usageData: usageData,\n    messageId: activeMsgId\n  };\n}\n\nfunction convertOpenAiPayload(openAiPayload, provider, requestType, routeInfo) {\n  if (!openAiPayload) return {};\n\n  var prov = (provider || \"\").toLowerCase();\n  var type = (requestType || \"text\").toLowerCase();\n\n  if (prov === \"google\") {\n    if (type === \"audio-text\") {\n      return typeof convertOpenAiToGeminiAudio === \"function\" ? convertOpenAiToGeminiAudio(openAiPayload) : openAiPayload;\n    } else if (type === \"audio-data\") {\n      return typeof convertOpenAiMultipartToGemini === \"function\" ? convertOpenAiMultipartToGemini(openAiPayload) : openAiPayload;\n    } else if (type === \"image-generation\") {\n      var modelStr = \"\";\n      if (openAiPayload && openAiPayload.model) {\n        modelStr = openAiPayload.model.toLowerCase();\n      } else if (routeInfo && (routeInfo.cleanModelName || routeInfo.mappedModelName)) {\n        modelStr = (routeInfo.mappedModelName || routeInfo.cleanModelName).toLowerCase();\n      }\n      if (modelStr.indexOf(\"imagen\") !== -1) {\n        return typeof convertOpenAiToImagen === \"function\" ? convertOpenAiToImagen(openAiPayload) : openAiPayload;\n      } else {\n        return typeof convertOpenAiToGeminiImage === \"function\" ? convertOpenAiToGeminiImage(openAiPayload) : openAiPayload;\n      }\n    } else if (type === \"embeddings\") {\n      return typeof convertOpenAiToGeminiEmbeddings === \"function\" ? convertOpenAiToGeminiEmbeddings(openAiPayload) : openAiPayload;\n    }\n    return openAiPayload;\n  } else if (prov === \"anthropic\") {\n    return typeof convertOpenAiToAnthropic === \"function\" ? convertOpenAiToAnthropic(openAiPayload, routeInfo) : openAiPayload;\n  }\n\n  return openAiPayload;\n}\n\nfunction getModelTokenLimit(modelName, quotaData) {\n  var limit = -1;\n  if (!modelName || !quotaData) {\n    return limit;\n  }\n\n  var data = quotaData;\n  if (typeof quotaData === \"string\") {\n    try {\n      data = JSON.parse(quotaData);\n    } catch (e) {\n      return limit;\n    }\n  } else if (quotaData && quotaData.asJSON) {\n    data = quotaData.asJSON;\n  }\n\n  if (!data || !Array.isArray(data)) {\n    return limit;\n  }\n\n  var cleanModel = modelName;\n  if (modelName.indexOf(\"/\") !== -1) {\n    var parts = modelName.split(\"/\");\n    cleanModel = parts[parts.length - 1];\n  }\n\n  for (var i = 0; i < data.length; i++) {\n    var entry = data[i];\n    if (entry && entry.llmOperations && Array.isArray(entry.llmOperations)) {\n      for (var j = 0; j < entry.llmOperations.length; j++) {\n        var op = entry.llmOperations[j];\n        if (op && op.model) {\n          var opModel = op.model;\n          var cleanOpModel = opModel;\n          if (opModel.indexOf(\"/\") !== -1) {\n            var opParts = opModel.split(\"/\");\n            cleanOpModel = opParts[opParts.length - 1];\n          }\n          if (opModel === modelName || cleanOpModel === cleanModel) {\n            if (\n              entry.llmTokenQuota &&\n              entry.llmTokenQuota.limit !== undefined &&\n              entry.llmTokenQuota.limit !== null &&\n              entry.llmTokenQuota.limit !== \"\"\n            ) {\n              return entry.llmTokenQuota.limit;\n            }\n          }\n        }\n      }\n    }\n  }\n\n  return limit;\n}\n\nfunction getModelList(quotaData) {\n  var result = {\n    object: \"list\",\n    data: []\n  };\n\n  if (!quotaData) {\n    return result;\n  }\n\n  var data = quotaData;\n  if (typeof quotaData === \"string\") {\n    try {\n      data = JSON.parse(quotaData);\n    } catch (e) {\n      return result;\n    }\n  } else if (quotaData && quotaData.asJSON) {\n    data = quotaData.asJSON;\n  }\n\n  if (!data || !Array.isArray(data)) {\n    return result;\n  }\n\n  var seenModels = {};\n  var createdTimestamp = 1686935002;\n\n  for (var i = 0; i < data.length; i++) {\n    var entry = data[i];\n    if (entry && entry.llmOperations && Array.isArray(entry.llmOperations)) {\n      for (var j = 0; j < entry.llmOperations.length; j++) {\n        var op = entry.llmOperations[j];\n        if (op && op.model) {\n          var modelId = op.model;\n          if (!seenModels[modelId]) {\n            seenModels[modelId] = true;\n            result.data.push({\n              id: modelId,\n              object: \"model\",\n              created: createdTimestamp,\n              owned_by: \"system\"\n            });\n          }\n        }\n      }\n    }\n  }\n\n  return result;\n}\n\nif (typeof exports !== \"undefined\") {\n  exports.getRequestInfo = getRequestInfo;\n  exports.getModelName = getModelName;\n  exports.getTargetRoute = getTargetRoute;\n  exports.getPrompts = getPrompts;\n  exports.setPrompt = setPrompt;\n  exports.getResponse = getResponse;\n  exports.setResponse = setResponse;\n  exports.getUsageData = getUsageData;\n  exports.testAllowedModels = testAllowedModels;\n  exports.testDeniedModels = testDeniedModels;\n  exports.encodeBytesToBase64 = encodeBytesToBase64;\n  exports.parseMultipartFormData = parseMultipartFormData;\n  exports.convertOpenAiMultipartToGemini = convertOpenAiMultipartToGemini;\n  exports.convertOpenAiToGeminiEmbeddings = convertOpenAiToGeminiEmbeddings;\n  exports.convertGeminiEmbeddingsToOpenAi = convertGeminiEmbeddingsToOpenAi;\n  exports.convertOpenAiToGemini = convertOpenAiToGemini;\n  exports.convertOpenAiToGeminiAudio = convertOpenAiToGeminiAudio;\n  exports.convertGeminiAudioToOpenAi = convertGeminiAudioToOpenAi;\n  exports.decodeBase64ToBytes = decodeBase64ToBytes;\n  exports.convertOpenAiPayload = convertOpenAiPayload;\n  exports.convertGeminiToOpenAi = convertGeminiToOpenAi;\n  exports.convertOpenAiToImagen = convertOpenAiToImagen;\n  exports.convertOpenAiToGeminiImage = convertOpenAiToGeminiImage;\n  exports.convertImagenToOpenAi = convertImagenToOpenAi;\n  exports.convertOpenAiToAnthropic = convertOpenAiToAnthropic;\n  exports.convertAnthropicToOpenAi = convertAnthropicToOpenAi;\n  exports.convertAnthropicStreamToOpenAi = convertAnthropicStreamToOpenAi;\n  exports.getModelTokenLimit = getModelTokenLimit;\n  exports.getModelList = getModelList;\n}\n";
 
 // --- Included Resource: ai-functions.js ---
@@ -1938,7 +1938,7 @@ if (typeof exports !== "undefined") {
 }
 
 
-export class TestlocalProxy {
+export class RESTAICompletionsProxy {
   constructor() {
     DataManager.initializeSync();
   }
@@ -2095,8 +2095,8 @@ export class TestlocalProxy {
     }
 
     var modelRouting = context.getVariable("propertyset.ai.ModelRouting") || context.getVariable("propertyset.ModelRouting") || "";
-    if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
-    modelRouting = "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud";
+    if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
+    modelRouting = "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud";
     if (modelRouting === "{" + "ModelRouting}" || modelRouting.indexOf("=") === -1) {
     modelRouting = "";
     }
@@ -2161,6 +2161,9 @@ export class TestlocalProxy {
     } else if (effectiveProvider === "google") {
     if (reqInfo.requestType === "embeddings") {
     context.setVariable("ai.method", "embedContent");
+    } else if (reqInfo.requestType === "image-generation") {
+    var m = (cleanModel || "").toLowerCase();
+    context.setVariable("ai.method", m.indexOf("imagen") !== -1 ? "predict" : "generateContent");
     } else if (reqInfo.isStreaming) {
     context.setVariable("ai.method", "streamGenerateContent");
     } else {
@@ -2172,19 +2175,18 @@ export class TestlocalProxy {
 
     if (reqInfo.input) {
     context.setVariable("ai.requestPrompt", reqInfo.input);
+    context.setVariable("user.input", reqInfo.input);
     } else {
     print("Could not find user input/prompt!");
     }
 
     var googleCloudProject = context.getVariable("organization.name");
-    var newProject = context.getVariable("request.header.x-project");
-    context.setVariable("ai.googleCloudProject", newProject || googleCloudProject);
+    context.setVariable("ai.googleCloudProject", googleCloudProject);
 
   }
 
   async JS_EvaluateSmartModel(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
     const print = console.log;
-
     var evalContent = context.getVariable("evaluationResponse.content");
     var judgeResult = "";
 
@@ -2205,18 +2207,18 @@ export class TestlocalProxy {
     }
 
     var result = judgeResult.toUpperCase().trim();
-    var selectedModel = "google/gemini-3.7-flash";
+    var selectedModel = "google/gemini-3.8-flash";
 
     if (result.indexOf("SIMPLE") !== -1) {
     selectedModel = "google/gemini-3.5-flash-lite";
     } else if (result.indexOf("COMPLEX") !== -1) {
-    selectedModel = "google/gemini-3.7-flash";
+    selectedModel = "google/gemini-3.8-flash";
     } else if (result.indexOf("REASONING") !== -1 || result.indexOf("THINKING") !== -1) {
-    selectedModel = "google/gemini-3.7-flash";
+    selectedModel = "anthropic/claude-opus-5";
     } else if (result.indexOf("MEDIUM") !== -1) {
-    selectedModel = "google/gemini-3.7-flash";
+    selectedModel = "google/gemini-3.8-flash";
     } else {
-    selectedModel = "google/gemini-3.7-flash";
+    selectedModel = "google/gemini-3.8-flash";
     }
 
     var currentModel = selectedModel;
@@ -2300,8 +2302,8 @@ export class TestlocalProxy {
     }
 
     var modelRouting = context.getVariable("propertyset.ai.ModelRouting") || context.getVariable("propertyset.ModelRouting") || "";
-    if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
-    modelRouting = "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud";
+    if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
+    modelRouting = "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud";
     if (modelRouting === "{" + "ModelRouting}" || modelRouting.indexOf("=") === -1) {
     modelRouting = "";
     }
@@ -2360,6 +2362,9 @@ export class TestlocalProxy {
     } else if (provider === "google") {
     if (requestType === "embeddings") {
     context.setVariable("ai.method", "embedContent");
+    } else if (requestType === "image-generation") {
+    var m = (context.getVariable("ai.model") || "").toLowerCase();
+    context.setVariable("ai.method", m.indexOf("imagen") !== -1 ? "predict" : "generateContent");
     } else if (isStreaming) {
     context.setVariable("ai.method", "streamGenerateContent");
     } else {
@@ -2456,57 +2461,47 @@ export class TestlocalProxy {
 
   }
 
-  async JS_ProcessGroupForApp(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
+  async JS_ValidateRequest(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
     const print = console.log;
-    var groupHeader = context.getVariable("request.header.x-ai-group");
-    if (groupHeader) {
-    var groupParts = groupHeader.split(":");
-    var developerEmail = groupParts[0].trim();
-    var appTargetName = (groupParts.length > 1) ? groupParts[1].trim() : null;
 
-    context.setVariable("ai.developerEmail", developerEmail);
-    if (appTargetName) {
-    context.setVariable("ai.appTargetName", appTargetName);
+    var productContent = context.getVariable("verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.filteredConfigs");
+    var model = context.getVariable("ai.model");
+
+    if (!productContent || !productContent.includes(model)) {
+    throw "MODEL_NOT_ALLOWED";
     }
+
+    var modelTokenLimit = getModelTokenLimit(model, productContent);
+    if (modelTokenLimit != -1) {
+    context.setVariable("ai.modelTokenLimit", modelTokenLimit);
     }
 
   }
 
-  async JS_ParseDeveloperAppKey(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
+  async JS_SetModifiedPrompt(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {
     const print = console.log;
-    var responseContent = context.getVariable("developerAppsResponse.content");
-    if (responseContent) {
+    var inputChanged = context.getVariable("user.inputChanged");
+    if (inputChanged === "true" || inputChanged === true) {
+    var userInput = context.getVariable("user.input");
+    if (userInput) {
+    var rawBody = context.getVariable("request.content") || request.content;
+    var requestContent = null;
     try {
-    var appsData = JSON.parse(responseContent);
-    var appList = appsData.app || appsData.developerApp || appsData;
-    if (Array.isArray(appList) && appList.length > 0) {
-    var targetAppName = context.getVariable("ai.appTargetName");
-    var selectedApp = null;
-
-    if (targetAppName) {
-    for (var i = 0; i < appList.length; i++) {
-    if (appList[i].name === targetAppName) {
-    selectedApp = appList[i];
-    break;
+    requestContent = request.content.asJSON;
+    } catch (e) {}
+    if (!requestContent && rawBody) {
+    try {
+    requestContent = (typeof rawBody === "object") ? rawBody : JSON.parse(rawBody);
+    } catch (e) {}
     }
+    if (requestContent) {
+    var updatedContent = setPrompt(requestContent, userInput);
+    var updatedString = JSON.stringify(updatedContent);
+    context.setVariable("request.content", updatedString);
+    try {
+    request.content = updatedString;
+    } catch (e) {}
     }
-    }
-
-    if (!selectedApp) {
-    selectedApp = appList[0];
-    }
-
-    if (selectedApp && selectedApp.credentials && selectedApp.credentials.length > 0) {
-    var firstCred = selectedApp.credentials[0];
-    var clientId = firstCred.consumerKey || firstCred.clientId || firstCred.key;
-    if (clientId) {
-    context.setVariable("request.header.x-ai-key", clientId);
-    print("Successfully resolved x-ai-key from developer app " + selectedApp.name + ": " + clientId);
-    }
-    }
-    }
-    } catch (e) {
-    print("Failed to parse developer apps response: " + e);
     }
     }
 
@@ -2716,7 +2711,7 @@ export class TestlocalProxy {
       });
     }
 
-    const context = new ApigeeContext(req, {}, "test.local");
+    const context = new ApigeeContext(req, {}, "REST-AI-Completions");
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       const contentType = req.headers.get("content-type") || "";
@@ -2729,13 +2724,12 @@ export class TestlocalProxy {
 
     try {
       // Initialize propertyset variables
-      context.setVariable("propertyset.ai.ModelRouting", "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud");
-      context.setVariable("propertyset.ai.ModelMapping", "gemini-flash-latest=gemini-3.7-flash,gemini-2.5-flash=gemini-3.7-flash");
+      context.setVariable("propertyset.ai.ModelRouting", "true");
       if (context.getVariable("propertyset.ai.SimpleModel") === undefined) { context.setVariable("propertyset.ai.SimpleModel", "google/gemini-3.5-flash-lite"); }
-      if (context.getVariable("propertyset.ai.MediumModel") === undefined) { context.setVariable("propertyset.ai.MediumModel", "google/gemini-3.7-flash"); }
-      if (context.getVariable("propertyset.ai.ComplexModel") === undefined) { context.setVariable("propertyset.ai.ComplexModel", "google/gemini-3.7-flash"); }
-      if (context.getVariable("propertyset.ai.ThinkingModel") === undefined) { context.setVariable("propertyset.ai.ThinkingModel", "google/gemini-3.7-flash"); }
-      if (context.getVariable("propertyset.ai.ModelRouting") === undefined) { context.setVariable("propertyset.ai.ModelRouting", "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud"); }
+      if (context.getVariable("propertyset.ai.MediumModel") === undefined) { context.setVariable("propertyset.ai.MediumModel", "google/gemini-3.8-flash"); }
+      if (context.getVariable("propertyset.ai.ComplexModel") === undefined) { context.setVariable("propertyset.ai.ComplexModel", "google/gemini-3.8-flash"); }
+      if (context.getVariable("propertyset.ai.ThinkingModel") === undefined) { context.setVariable("propertyset.ai.ThinkingModel", "anthropic/claude-opus-5"); }
+      if (context.getVariable("propertyset.ai.ModelRouting") === undefined) { context.setVariable("propertyset.ai.ModelRouting", "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud"); }
       if (context.getVariable("propertyset.ai.ModelMapping") === undefined) { context.setVariable("propertyset.ai.ModelMapping", "gemini-flash-latest=gemini-3.7-flash,gemini-2.5-flash=gemini-3.7-flash"); }
 
       // 1. Run Request Flow Policies
@@ -2782,20 +2776,27 @@ export class TestlocalProxy {
       await context.traceStep("JS-CheckModel", "Javascript", "Request Flow", async () => {
         await this.JS_CheckModel(context, context.request, context.response);
       });
+      if (Apigee.evaluateCondition("ai.model JavaRegex \"^smart-.*\" AND request.header.Authorization == null", context)) {
+        await context.traceStep("AM-SetGoogleToken", "AssignMessage", "Request Flow", async () => {
+        await Apigee.assignMessage({
+          "ignoreUnresolvedVariables": true,
+          "setAuthentication": {
+            "headerName": "Authorization",
+            "googleAccessToken": {}
+          }
+        }, context);
+      });
+      } else {
+        context.recordSkippedStep("AM-SetGoogleToken", "AssignMessage", "Request Flow", "ai.model JavaRegex \"^smart-.*\" AND request.header.Authorization == null");
+      }
       if (Apigee.evaluateCondition("ai.model JavaRegex \"^smart-.*\"", context)) {
         await context.traceStep("SC-ModelJudge", "ServiceCallout", "Request Flow", async () => {
         await Apigee.serviceCallout({
           "url": "https://aiplatform.googleapis.com/v1/projects/{organization.name}/locations/global/publishers/google/models/gemini-3.5-flash-lite:generateContent",
           "method": "POST",
-          "headers": {
-            "Content-Type": "application/json"
-          },
           "payload": "{\n  \"contents\": [\n    {\n      \"role\": \"USER\",\n      \"parts\": [\n        {\n          \"text\": \"Evaluate which model type should be used for this prompt, just answer with the type name (SIMPLE, MEDIUM, COMPLEX, REASONING): {ai.requestPrompt}\"\n        }\n      ]\n    }\n  ]\n}\n",
           "requestVar": "evaluationRequest",
-          "responseVar": "evaluationResponse",
-          "authentication": {
-            "googleAccessToken": true
-          }
+          "responseVar": "evaluationResponse"
         }, context);
       });
       } else {
@@ -2811,46 +2812,13 @@ export class TestlocalProxy {
       await context.traceStep("JS-TransformPayload", "Javascript", "Request Flow", async () => {
         await this.JS_TransformPayload(context, context.request, context.response);
       });
-      if (Apigee.evaluateCondition("request.header.x-ai-key == null AND request.header.x-ai-group != null", context)) {
-        await context.traceStep("JS-ProcessGroupForApp", "Javascript", "Request Flow", async () => {
-        await this.JS_ProcessGroupForApp(context, context.request, context.response);
-      });
-      } else {
-        context.recordSkippedStep("JS-ProcessGroupForApp", "Javascript", "Request Flow", "request.header.x-ai-key == null AND request.header.x-ai-group != null");
-      }
-      if (Apigee.evaluateCondition("request.header.x-ai-key == null AND request.header.x-ai-group != null AND ai.developerEmail != null", context)) {
-        await context.traceStep("SC-GetDeveloperApps", "ServiceCallout", "Request Flow", async () => {
-        await Apigee.serviceCallout({
-          "url": "https://apigee.googleapis.com/v1/organizations/{organization.name}/developers/{ai.developerEmail}/apps?expand=true",
-          "requestVar": "developerAppsRequest",
-          "responseVar": "developerAppsResponse",
-          "continueOnError": true,
-          "authentication": {
-            "googleAccessToken": true
-          }
-        }, context);
-      });
-      } else {
-        context.recordSkippedStep("SC-GetDeveloperApps", "ServiceCallout", "Request Flow", "request.header.x-ai-key == null AND request.header.x-ai-group != null AND ai.developerEmail != null");
-      }
-      if (Apigee.evaluateCondition("request.header.x-ai-key == null AND developerAppsResponse.content != null", context)) {
-        await context.traceStep("JS-ParseDeveloperAppKey", "Javascript", "Request Flow", async () => {
-        await this.JS_ParseDeveloperAppKey(context, context.request, context.response);
-      });
-      } else {
-        context.recordSkippedStep("JS-ParseDeveloperAppKey", "Javascript", "Request Flow", "request.header.x-ai-key == null AND developerAppsResponse.content != null");
-      }
-      if (Apigee.evaluateCondition("token.type != \"google\"", context)) {
-        await context.traceStep("VA-VerifyKey", "VerifyAPIKey", "Request Flow", async () => {
+      await context.traceStep("VA-VerifyKey", "VerifyAPIKey", "Request Flow", async () => {
         await Apigee.verifyApiKey({
           "keyRef": "request.header.x-ai-key",
           "policyName": "VA-VerifyKey",
           "continueOnError": false
         }, context);
       });
-      } else {
-        context.recordSkippedStep("VA-VerifyKey", "VerifyAPIKey", "Request Flow", "token.type != \"google\"");
-      }
       await context.traceStep("AM-RemoveKey", "AssignMessage", "Request Flow", async () => {
         await Apigee.assignMessage({
           "assignTo": "request",
@@ -2866,6 +2834,20 @@ export class TestlocalProxy {
           ]
         }, context);
       });
+      if (Apigee.evaluateCondition("proxy.pathsuffix != \"/models\" AND proxy.pathsuffix != \"/v1/models\"", context)) {
+        await context.traceStep("JS-ValidateRequest", "Javascript", "Request Flow", async () => {
+        await this.JS_ValidateRequest(context, context.request, context.response);
+      });
+      } else {
+        context.recordSkippedStep("JS-ValidateRequest", "Javascript", "Request Flow", "proxy.pathsuffix != \"/models\" AND proxy.pathsuffix != \"/v1/models\"");
+      }
+      if (Apigee.evaluateCondition("ai.modelTokenLimit != null", context)) {
+        await context.traceStep("LTQ-QuotaEnforce", "LLMTokenQuota", "Request Flow", async () => {
+        // Policy: LTQ-QuotaEnforce (LLMTokenQuota)
+      });
+      } else {
+        context.recordSkippedStep("LTQ-QuotaEnforce", "LLMTokenQuota", "Request Flow", "ai.modelTokenLimit != null");
+      }
 
       // 2. Select and Execute Target Connection
       const path = Http.getPath(req.url, "/v1/chat/completions");
@@ -2886,10 +2868,15 @@ export class TestlocalProxy {
           "target": "googlecloud-projects"
         },
         {
-          "name": "default"
+          "name": "default",
+          "target": "default"
         }
       ];
       const targetsMap: Record<string, any> = {
+        "anthropic": {
+          "name": "anthropic",
+          "url": "https://api.anthropic.com"
+        },
         "googlecloud-projects": {
           "name": "googlecloud-projects",
           "url": "https://aiplatform.googleapis.com/v1/projects"
@@ -2926,10 +2913,16 @@ export class TestlocalProxy {
       }
 
       // Target PreFlow
+      if (Apigee.evaluateCondition("user.inputChanged = \"true\"", context)) {
+        await context.traceStep("JS-SetModifiedPrompt", "Javascript", "Target PreFlow", async () => {
+        await this.JS_SetModifiedPrompt(context, context.request, context.response);
+      });
+      } else {
+        context.recordSkippedStep("JS-SetModifiedPrompt", "Javascript", "Target PreFlow", "user.inputChanged = \"true\"");
+      }
       if (Apigee.evaluateCondition("request.header.Authorization == null", context)) {
         await context.traceStep("AM-SetGoogleToken", "AssignMessage", "Target PreFlow", async () => {
         await Apigee.assignMessage({
-          "assignTo": "request",
           "ignoreUnresolvedVariables": true,
           "setAuthentication": {
             "headerName": "Authorization",
@@ -2998,20 +2991,23 @@ export class TestlocalProxy {
           requestHeaders: Object.fromEntries(headers.entries()),
         });
         // Target DefaultFaultRule
+        await context.traceStep("AM-SetGoogleToken", "AssignMessage", "Target Fault", async () => {
+          await Apigee.assignMessage({
+            "ignoreUnresolvedVariables": true,
+            "setAuthentication": {
+              "headerName": "Authorization",
+              "googleAccessToken": {}
+            }
+          }, context);
+        });
         await context.traceStep("SC-Failover-GoogleCloud-OAI", "ServiceCallout", "Target Fault", async () => {
           await Apigee.serviceCallout({
-            "url": "https://aiplatform.googleapis.com/v1/projects/{ai.googleCloudProject}/locations/global/endpoints/openapi/chat/completions",
+            "url": "https://aiplatform.googleapis.com/v1/projects/{organization.name}/locations/global/endpoints/openapi/chat/completions",
             "method": "POST",
-            "headers": {
-              "Content-Type": "application/json"
-            },
-            "payload": "{\n  \"model\": \"google/gemini-3.7-flash\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{ai.requestPrompt}\"\n    }\n  ],\n  \"stream\": false\n}\n",
+            "payload": "{\n  \"model\": \"google/gemini-3.8-flash\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{ai.requestPrompt}\"\n    }\n  ],\n  \"stream\": false\n}\n",
             "requestVar": "failoverRequest",
             "responseVar": "failoverResponse",
-            "continueOnError": true,
-            "authentication": {
-              "googleAccessToken": true
-            }
+            "continueOnError": true
           }, context);
         });
         await context.traceStep("JS-SetFailoverResponse", "Javascript", "Target Fault", async () => {
@@ -3183,6 +3179,20 @@ export class TestlocalProxy {
                 } else {
                   context.recordSkippedStep("JS-ResetUsageDataFound", "Javascript", "Target EventFlow", "ai.usageDataFound = \"true\"");
                 }
+                if (Apigee.evaluateCondition("verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null", context)) {
+                  await context.traceStep("LTQ-QuotaCount", "LLMTokenQuota", "Target EventFlow", async () => {
+                  // Policy: LTQ-QuotaCount (LLMTokenQuota)
+                });
+                } else {
+                  context.recordSkippedStep("LTQ-QuotaCount", "LLMTokenQuota", "Target EventFlow", "verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null");
+                }
+              if (Apigee.evaluateCondition("verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null", context)) {
+                await context.traceStep("LTQ-QuotaCount", "LLMTokenQuota", "Streaming Response Flow", async () => {
+                // Policy: LTQ-QuotaCount (LLMTokenQuota)
+              });
+              } else {
+                context.recordSkippedStep("LTQ-QuotaCount", "LLMTokenQuota", "Streaming Response Flow", "verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null");
+              }
                 yield context.response.rawContent;
               }
             }
@@ -3278,6 +3288,15 @@ export class TestlocalProxy {
         context.recordSkippedStep("JS-ResetUsageDataFound", "Javascript", "Target PostFlow", "ai.usageDataFound = \"true\"");
       }
 
+      // 3. Run Endpoint Response Flow Policies
+      if (Apigee.evaluateCondition("verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null", context)) {
+        await context.traceStep("LTQ-QuotaCount", "LLMTokenQuota", "Response Flow", async () => {
+        // Policy: LTQ-QuotaCount (LLMTokenQuota)
+      });
+      } else {
+        context.recordSkippedStep("LTQ-QuotaCount", "LLMTokenQuota", "Response Flow", "verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null AND ai.totalTokenCount != null");
+      }
+
       // 4. Return Response
       context.finalizeTrace();
       const responseHeaders = {
@@ -3312,6 +3331,30 @@ export class TestlocalProxy {
         } else {
           context.recordSkippedStep("AM-Unauthorized", "AssignMessage", "FaultRules", "fault.name == \"InvalidApiKey\" OR fault.name == \"FailedToResolveAPIKey\"");
         }
+        if (Apigee.evaluateCondition("fault.name == \"ScriptExecutionFailed\"", context)) {
+          await context.traceStep("AM-ModelNotAllowed", "AssignMessage", "FaultRules", async () => {
+          await Apigee.assignMessage({
+            "assignTo": "request",
+            "ignoreUnresolvedVariables": true,
+            "setPayload": "Model not allowed.",
+            "setStatusCode": 403
+          }, context);
+        });
+        } else {
+          context.recordSkippedStep("AM-ModelNotAllowed", "AssignMessage", "FaultRules", "fault.name == \"ScriptExecutionFailed\"");
+        }
+        if (Apigee.evaluateCondition("fault.name == \"LLMTokenQuotaViolation\"", context)) {
+          await context.traceStep("AM-QuotaExhaustion", "AssignMessage", "FaultRules", async () => {
+          await Apigee.assignMessage({
+            "assignTo": "request",
+            "ignoreUnresolvedVariables": true,
+            "setPayload": "Quota exhausted.",
+            "setStatusCode": 429
+          }, context);
+        });
+        } else {
+          context.recordSkippedStep("AM-QuotaExhaustion", "AssignMessage", "FaultRules", "fault.name == \"LLMTokenQuotaViolation\"");
+        }
       context.finalizeTrace();
       const responseHeaders = {
         ...corsHeaders,
@@ -3330,8 +3373,8 @@ export class TestlocalProxy {
   }
 }
 
-export const testlocalInstance = new TestlocalProxy();
+export const REST_AI_CompletionsInstance = new RESTAICompletionsProxy();
 
-export async function testlocalProxy(req: Request): Promise<Response> {
-  return testlocalInstance.handle(req);
+export async function REST_AI_CompletionsProxy(req: Request): Promise<Response> {
+  return REST_AI_CompletionsInstance.handle(req);
 }

@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
+import { DeploymentManager } from "./lib/DeploymentManager";
 
-const PROXIES_DIR = "./proxies";
-const TEMPLATES_DIR = "./data/templates";
-const INDEX_FILE = "./index.ts";
+const PROXIES_DIR = path.resolve(process.cwd(), "proxies");
+const DATA_PROXIES_DIR = path.resolve(process.cwd(), "data/proxies");
+const TEMPLATES_DIR = path.resolve(process.cwd(), "data/templates");
+const DEPLOYMENTS_DIR = path.resolve(process.cwd(), "data/deployments");
+const INDEX_FILE = path.resolve(process.cwd(), "index.ts");
 
 function toArray<T>(item: T | T[] | undefined): T[] {
   if (item === undefined || item === null) return [];
@@ -407,31 +410,76 @@ function toPascalCase(str: string): string {
     .replace(/[^a-zA-Z0-9]/g, "");
 }
 
-export async function runBuild(): Promise<{ success: boolean; count: number; proxies: string[] }> {
-  // 1. Cleanup / ensure proxies directory
-  if (fs.existsSync(PROXIES_DIR)) {
-    fs.readdirSync(PROXIES_DIR).forEach((file) => {
-      fs.unlinkSync(path.join(PROXIES_DIR, file));
-    });
-  } else {
-    fs.mkdirSync(PROXIES_DIR, { recursive: true });
+export interface BuildOptions {
+  deferWrites?: number;
+}
+
+let activeBuildPromise: Promise<{ success: boolean; count: number; proxies: string[] }> | null = null;
+
+export async function runBuild(options?: BuildOptions): Promise<{ success: boolean; count: number; proxies: string[] }> {
+  if (activeBuildPromise) {
+    return activeBuildPromise;
+  }
+  activeBuildPromise = executeBuild(options).finally(() => {
+    activeBuildPromise = null;
+  });
+  return activeBuildPromise;
+}
+
+async function executeBuild(options?: BuildOptions): Promise<{ success: boolean; count: number; proxies: string[] }> {
+  // 1. Ensure required directories exist
+  if (!fs.existsSync(PROXIES_DIR)) fs.mkdirSync(PROXIES_DIR, { recursive: true });
+  if (!fs.existsSync(DEPLOYMENTS_DIR)) fs.mkdirSync(DEPLOYMENTS_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_PROXIES_DIR)) fs.mkdirSync(DATA_PROXIES_DIR, { recursive: true });
+  if (!fs.existsSync(TEMPLATES_DIR)) fs.mkdirSync(TEMPLATES_DIR, { recursive: true });
+
+  // 2. Compile all data/deployments as input structure:
+  // Parse all deployment files, generate proxy yamls from templates and proxies, then generate proxy code
+  try {
+    await DeploymentManager.generateProxiesFromDeployments();
+  } catch (err: any) {
+    console.warn("[build] Warning generating proxies from deployments:", err.message);
   }
 
-  // 2. Prepare to rebuild index.ts
+  const generatedFiles = new Set<string>();
+  const pendingWrites: Array<{ path: string; content: string }> = [];
+
+  // 3. Prepare to rebuild index.ts
   let indexImports = "";
   let indexRoutes = "";
   const compiledProxies: string[] = [];
   const importedFunctions = new Set<string>();
 
-  // 3. Process each yaml file in templates
-  if (!fs.existsSync(TEMPLATES_DIR)) {
-    fs.mkdirSync(TEMPLATES_DIR, { recursive: true });
+  // 4. Process each yaml file in data/proxies and data/templates
+  interface ProxySource {
+    dir: string;
+    file: string;
   }
-  const templates = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
+  const sources: ProxySource[] = [];
+  const seenFiles = new Set<string>();
 
-  for (const templateFile of templates) {
+  if (fs.existsSync(DATA_PROXIES_DIR)) {
+    const pFiles = fs.readdirSync(DATA_PROXIES_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
+    for (const f of pFiles) {
+      sources.push({ dir: DATA_PROXIES_DIR, file: f });
+      seenFiles.add(f);
+    }
+  }
+
+  if (fs.existsSync(TEMPLATES_DIR)) {
+    const tFiles = fs.readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
+    for (const f of tFiles) {
+      if (!seenFiles.has(f)) {
+        sources.push({ dir: TEMPLATES_DIR, file: f });
+        seenFiles.add(f);
+      }
+    }
+  }
+
+  for (const src of sources) {
+    const templateFile = src.file;
     const templateBaseName = path.basename(templateFile, path.extname(templateFile));
-    const content = fs.readFileSync(path.join(TEMPLATES_DIR, templateFile), "utf8");
+    const content = fs.readFileSync(path.join(src.dir, templateFile), "utf8");
     const data = yaml.load(content) as any;
 
     if (!data) continue;
@@ -542,7 +590,8 @@ export async function runBuild(): Promise<{ success: boolean; count: number; pro
     for (const resUrl of includedResourceNames) {
       const res = findResource(data.resources || [], resUrl);
       if (res && res.content) {
-        includedResourcesCode += `// --- Included Resource: ${res.name || resUrl} ---\n${res.content}\n\n`;
+        const sanitizedContent = res.content.replace(/\brequire\s*\(\s*(['"][^'"]+['"])\s*\)/g, "globalThis.require?.(String($1))");
+        includedResourcesCode += `// --- Included Resource: ${res.name || resUrl} ---\n${sanitizedContent}\n\n`;
         const fnNames = extractFunctionNames(res.content);
         exposedClassFunctions.push(...fnNames);
       }
@@ -575,8 +624,9 @@ export async function runBuild(): Promise<{ success: boolean; count: number; pro
 
       if (policy.type === "Javascript") {
         const jsSource = getJavascriptSource(policy, data.resources || []);
+        const sanitizedJsSource = jsSource.replace(/\brequire\s*\(\s*(['"][^'"]+['"])\s*\)/g, "globalThis.require?.(String($1))");
         const methodName = policyName.replace(/[^a-zA-Z0-9]/g, "_");
-        const formattedJsSource = jsSource
+        const formattedJsSource = sanitizedJsSource
           .split("\n")
           .map((line) => (line.trim().length > 0 ? `    ${line.trimStart()}` : ""))
           .join("\n");
@@ -585,8 +635,13 @@ export async function runBuild(): Promise<{ success: boolean; count: number; pro
       }
     }
 
-    // Generate direct policy call for each step (with condition evaluation)
-    const generateStepCall = (step: FlowStep, indent: string = "      ", selfVar: string = "this") => {
+    // Generate direct policy call for each step (with condition evaluation and tracing)
+    const generateStepCall = (
+      step: FlowStep,
+      indent: string = "      ",
+      selfVar: string = "this",
+      flowName: string = "Flow"
+    ) => {
       const stepName = step.name;
       const stepCondition = step.condition;
       const policy = data.policies?.find((p: any) => p.name === stepName);
@@ -621,25 +676,27 @@ export async function runBuild(): Promise<{ success: boolean; count: number; pro
         callCode = `// Policy: ${stepName} (${policy.type})`;
       }
 
+      const tracedCall = `await context.traceStep(${JSON.stringify(stepName)}, ${JSON.stringify(policy.type)}, ${JSON.stringify(flowName)}, async () => {\n${indent}  ${callCode}\n${indent}});`;
+
       if (stepCondition && stepCondition.trim()) {
-        return `${indent}if (Apigee.evaluateCondition(${JSON.stringify(stepCondition)}, context)) {\n${indent}  ${callCode}\n${indent}}`;
+        return `${indent}if (Apigee.evaluateCondition(${JSON.stringify(stepCondition)}, context)) {\n${indent}  ${tracedCall}\n${indent}} else {\n${indent}  context.recordSkippedStep(${JSON.stringify(stepName)}, ${JSON.stringify(policy.type)}, ${JSON.stringify(flowName)}, ${JSON.stringify(stepCondition)});\n${indent}}`;
       }
-      return `${indent}${callCode}`;
+      return `${indent}${tracedCall}`;
     };
 
-    const requestPolicyExecutions = requestSteps.map((s) => generateStepCall(s)).join("\n");
-    const responsePolicyExecutions = responseSteps.map((s) => generateStepCall(s)).join("\n");
-    const targetPreFlowExecutions = uniqueTargetPreFlowSteps.map((s) => generateStepCall(s, "      ")).join("\n");
-    const targetPostFlowExecutions = uniqueTargetPostFlowSteps.map((s) => generateStepCall(s, "      ")).join("\n");
-    const targetFaultExecutions = uniqueTargetFaultSteps.map((s) => generateStepCall(s, "        ")).join("\n");
+    const requestPolicyExecutions = requestSteps.map((s) => generateStepCall(s, "      ", "this", "Request Flow")).join("\n");
+    const responsePolicyExecutions = responseSteps.map((s) => generateStepCall(s, "      ", "this", "Response Flow")).join("\n");
+    const targetPreFlowExecutions = uniqueTargetPreFlowSteps.map((s) => generateStepCall(s, "      ", "this", "Target PreFlow")).join("\n");
+    const targetPostFlowExecutions = uniqueTargetPostFlowSteps.map((s) => generateStepCall(s, "      ", "this", "Target PostFlow")).join("\n");
+    const targetFaultExecutions = uniqueTargetFaultSteps.map((s) => generateStepCall(s, "        ", "this", "Target Fault")).join("\n");
     const streamingTargetEventFlowExecutions = uniqueTargetEventFlowSteps
-      .map((s) => generateStepCall(s, "                ", "self"))
+      .map((s) => generateStepCall(s, "                ", "self", "Target EventFlow"))
       .join("\n");
     const streamingResponsePolicyExecutions = responseSteps
-      .map((s) => generateStepCall(s, "              ", "self"))
+      .map((s) => generateStepCall(s, "              ", "self", "Streaming Response Flow"))
       .join("\n");
 
-    const faultRuleExecutions = faultSteps.map((s) => generateStepCall(s, "        ")).join("\n");
+    const faultRuleExecutions = faultSteps.map((s) => generateStepCall(s, "        ", "this", "FaultRules")).join("\n");
 
     // Register all template resources into globalResourceStore
     let resourceStoreInits = "";
@@ -718,10 +775,16 @@ export async function runBuild(): Promise<{ success: boolean; count: number; pro
         }
       }
 
-      const targetObj = targetsMap[selectedTargetName];
+      let targetObj = targetsMap[selectedTargetName];
+      if (!targetObj && (selectedTargetName === "default" || !targetsMap[selectedTargetName])) {
+        targetObj = targetsMap["${defaultTargetName}"] || Object.values(targetsMap)[0];
+      }
       const rawTargetUrl = targetObj?.url || "${defaultTargetUrl}";
       const resolvedTargetBaseUrl = context.resolveVariables(rawTargetUrl).replace(/\\/+$/, "");
       const fullTargetUrl = path ? \`\${resolvedTargetBaseUrl}/\${path}\` : resolvedTargetBaseUrl;
+      if (!fullTargetUrl || !fullTargetUrl.trim()) {
+        throw new Error(\`Target '\${selectedTargetName}' not found or has no URL defined in proxy/template.\`);
+      }
 
 ${targetPreFlowExecutions ? `      // Target PreFlow\n${targetPreFlowExecutions}\n\n` : ""}      const headers = new Headers();
       const skipHeaders = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "upgrade"]);
@@ -732,6 +795,7 @@ ${targetPreFlowExecutions ? `      // Target PreFlow\n${targetPreFlowExecutions}
       }
 
       let response: Response;
+      const targetStartTime = Date.now();
       try {
         response = await fetch(fullTargetUrl, {
           method: req.method,
@@ -742,14 +806,42 @@ ${targetPreFlowExecutions ? `      // Target PreFlow\n${targetPreFlowExecutions}
 
         context.response.status = response.status;
         context.response.statusText = response.statusText;
+        const skipResponseHeaders = new Set([
+          "content-length",
+          "content-encoding",
+          "transfer-encoding",
+          "connection",
+          "keep-alive",
+          "access-control-allow-origin",
+          "access-control-allow-methods",
+          "access-control-allow-headers",
+          "access-control-expose-headers",
+        ]);
         for (const [k, v] of response.headers.entries()) {
-          if (k.toLowerCase() !== "content-length") {
+          if (!skipResponseHeaders.has(k.toLowerCase())) {
             context.response.setHeader(k, v);
           }
         }
+        context.recordTargetCall({
+          name: context.getVariable("target.name") || "default",
+          url: fullTargetUrl,
+          verb: req.method,
+          status: response.status,
+          durationMs: Date.now() - targetStartTime,
+          requestHeaders: Object.fromEntries(headers.entries()),
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+        });
       } catch (targetErr: any) {
         context.setVariable("target.failed", true);
         context.setVariable("target.error", targetErr.message);
+        context.recordTargetCall({
+          name: context.getVariable("target.name") || "default",
+          url: fullTargetUrl,
+          verb: req.method,
+          status: 502,
+          durationMs: Date.now() - targetStartTime,
+          requestHeaders: Object.fromEntries(headers.entries()),
+        });
 ${targetFaultExecutions ? `        // Target DefaultFaultRule\n${targetFaultExecutions}\n` : ""}        if (!context.response.content && context.response.status === 200) {
           response = new Response(JSON.stringify({ error: { message: targetErr.message, code: 502 } }), {
             status: 502,
@@ -768,6 +860,7 @@ ${targetFaultExecutions ? `        // Target DefaultFaultRule\n${targetFaultExec
       const targetContentType = context.response.getHeader("content-type") || response?.headers?.get("content-type") || "";
       if (Http.isStreaming(targetContentType)) {
         const self = this;
+        context.finalizeTrace();
         const responseHeaders = {
           ...corsHeaders,
           ...context.response.headers,
@@ -806,17 +899,26 @@ ${targetPostFlowExecutions ? `      // Target PostFlow\n${targetPostFlowExecutio
   globalResourceStore,
 } from "../lib/apigee";
 import { Http } from "../lib/http";
+import { DataManager } from "../lib/DataManager";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
   "Access-Control-Allow-Headers": "*",
+  "Access-Control-Expose-Headers": "*",
 };
 
 const print = console.log;
 
+// Always initialize DataManager to load YAMLs (deployments, products, kvm, users) on startup
+DataManager.initializeSync();
+
 ${resourceStoreInits}
 ${includedResourcesCode}export class ${className} {
+  constructor() {
+    DataManager.initializeSync();
+  }
+
 ${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -825,7 +927,7 @@ ${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Res
       });
     }
 
-    const context = new ApigeeContext(req);
+    const context = new ApigeeContext(req, {}, ${JSON.stringify(data.name)});
 
     if (req.method !== "GET" && req.method !== "HEAD") {
       const contentType = req.headers.get("content-type") || "";
@@ -838,6 +940,7 @@ ${classFunctionAssignments}${jsMethods}  async handle(req: Request): Promise<Res
 
     try {
 ${propertySetBlock}${requestFlowBlock}${targetExecution}${responseFlowBlock}      // 4. Return Response
+      context.finalizeTrace();
       const responseHeaders = {
         ...corsHeaders,
         ...context.response.headers,
@@ -847,12 +950,28 @@ ${propertySetBlock}${requestFlowBlock}${targetExecution}${responseFlowBlock}    
         headers: responseHeaders,
       });
     } catch (err: any) {
-${faultRuleExecutions ? `      // Execute FaultRules\n${faultRuleExecutions}\n` : ""}      const responseHeaders = {
+      if (!context.getVariable("fault.name")) {
+        context.setVariable("fault.name", "ScriptExecutionFailed");
+      }
+      if (!context.fault) {
+        context.fault = {
+          name: context.getVariable("fault.name") || "ScriptExecutionFailed",
+          status: 500,
+          error: err?.message || String(err),
+        };
+      }
+${faultRuleExecutions ? `      // Execute FaultRules\n${faultRuleExecutions}\n` : ""}      context.finalizeTrace();
+      const responseHeaders = {
         ...corsHeaders,
         ...context.response.headers,
       };
-      return new Response(context.response.rawContent || JSON.stringify({ error: err.message }), {
-        status: context.fault?.status || context.response.status || 500,
+      let faultStatus = context.fault?.status || (context.response.status !== 200 ? context.response.status : 500);
+      let faultBody = context.response.rawContent;
+      if (!faultBody || faultBody === "{}" || (context.response.status === 200 && !context.response.content)) {
+        faultBody = JSON.stringify({ error: err?.message || String(err) });
+      }
+      return new Response(faultBody, {
+        status: faultStatus,
         headers: responseHeaders,
       });
     }
@@ -866,7 +985,9 @@ export async function ${functionName}(req: Request): Promise<Response> {
 }
 `;
 
-    fs.writeFileSync(path.join(PROXIES_DIR, fileName), proxyFileContent);
+    const targetPath = path.join(PROXIES_DIR, fileName);
+    pendingWrites.push({ path: targetPath, content: proxyFileContent });
+    generatedFiles.add(fileName);
 
     // Add to index info
     if (!importedFunctions.has(functionName)) {
@@ -888,12 +1009,14 @@ import yaml from "js-yaml";
 import { TemplateManager } from "./lib/TemplateManager";
 import { DataManager } from "./lib/DataManager";
 import { DeploymentManager } from "./lib/DeploymentManager";
+import { TraceManager } from "./lib/tracer";
 import { runBuild } from "./build";
 ${indexImports}
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
   "Access-Control-Allow-Headers": "*",
+  "Access-Control-Expose-Headers": "*",
 };
 
 // Initialize DataManager on startup to load products, users, and KVM from data/
@@ -947,11 +1070,13 @@ async function parseTemplateRequestBody(rawText: string, contentType: string = "
   return { name, content: rawText };
 }
 
-const server = Bun.serve({
-  port: process.env.PORT ? parseInt(process.env.PORT, 10) : 8080,
-  routes: {
-${indexRoutes}  },
-  async fetch(req) {
+const requestedPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
+function startBungeeServer(portNum: number) {
+  return Bun.serve({
+    port: portNum,
+    routes: {
+${indexRoutes}    },
+    async fetch(req) {
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -965,7 +1090,8 @@ ${indexRoutes}  },
     if (url.pathname === "/rebuild" && req.method === "POST") {
       console.log("Rebuild requested. Running build.ts...");
       try {
-        const buildRes = await runBuild();
+        const buildRes = await runBuild({ deferWrites: 50 });
+        await DataManager.initialize();
         return Response.json({ success: true, message: "Build successful. Service restarted!", ...buildRes }, { headers: corsHeaders });
       } catch (err: any) {
         console.error("Rebuild error:", err);
@@ -973,11 +1099,117 @@ ${indexRoutes}  },
       }
     }
 
+    // Data API endpoints
+    // GET /api/data -> summary of all files and counts
+    if (url.pathname === "/api/data" && req.method === "GET") {
+      return Response.json(DataManager.getDataSummary(), { headers: corsHeaders });
+    }
+
+    // POST /api/data/fetch-url -> download remote YAML and deploy
+    if (url.pathname === "/api/data/fetch-url" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const targetUrl = body.url || url.searchParams.get("url");
+        if (!targetUrl) {
+          return Response.json({ success: false, error: "url parameter required" }, { status: 400, headers: corsHeaders });
+        }
+        const resp = await fetch(targetUrl);
+        if (!resp.ok) {
+          return Response.json({ success: false, error: "Failed to fetch URL: " + resp.status + " " + resp.statusText }, { status: 400, headers: corsHeaders });
+        }
+        const rawYaml = await resp.text();
+        const deployRes = await DeploymentManager.deploy(rawYaml, { build: false });
+        return Response.json({ success: true, deployment: deployRes, summary: DataManager.getDataSummary() }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // POST /api/data/apply -> save accumulated changes, deploy deployments, run build
+    if (url.pathname === "/api/data/apply" && req.method === "POST") {
+      try {
+        const body = await req.json().catch(() => ({}));
+        if (body.files && Array.isArray(body.files)) {
+          for (const f of body.files) {
+            DataManager.saveDataFile(f.section, f.filename, f.content);
+          }
+        }
+
+        // Deploy all deployments in data/deployments/
+        const depFiles = DataManager.listDataFiles("deployments");
+        const deployedProxiesList: string[] = [];
+        for (const df of depFiles) {
+          const raw = DataManager.getDataFile("deployments", df);
+          if (raw) {
+            const depRes = await DeploymentManager.deploy(raw, { build: false });
+            if (depRes.deployedProxies) {
+              deployedProxiesList.push(...depRes.deployedProxies.map((p) => p.name));
+            }
+          }
+        }
+
+        const buildRes = await runBuild({ deferWrites: 50 });
+        await DataManager.initialize();
+        return Response.json({
+          success: true,
+          deployedProxies: deployedProxiesList,
+          ...buildRes,
+        }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // POST /api/data/files -> save single file
+    if (url.pathname === "/api/data/files" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const { section, filename, content } = body;
+        if (!section || !filename || content === undefined) {
+          return Response.json({ success: false, error: "section, filename, and content required" }, { status: 400, headers: corsHeaders });
+        }
+        DataManager.saveDataFile(section, filename, content);
+        return Response.json({ success: true, summary: DataManager.getDataSummary() }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // DELETE /api/data/files -> delete single file
+    if (url.pathname === "/api/data/files" && req.method === "DELETE") {
+      try {
+        const section = url.searchParams.get("section");
+        const filename = url.searchParams.get("filename");
+        if (!section || !filename) {
+          return Response.json({ success: false, error: "section and filename parameters required" }, { status: 400, headers: corsHeaders });
+        }
+        const ok = DataManager.deleteDataFile(section, filename);
+        return Response.json({ success: ok, summary: DataManager.getDataSummary() }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // GET /api/data/:section/:filename
+    if (url.pathname.startsWith("/api/data/")) {
+      const parts = url.pathname.slice("/api/data/".length).split("/");
+      const section = parts[0];
+      const filename = parts[1];
+      if (section && filename) {
+        const content = DataManager.getDataFile(section, filename);
+        if (content === null) {
+          return new Response("Not Found", { status: 404, headers: corsHeaders });
+        }
+        return new Response(content, { headers: { ...corsHeaders, "Content-Type": "text/yaml" } });
+      }
+    }
+
     // Deployments endpoint (POST deployment YAML or JSON)
     if ((url.pathname === "/api/deployments" || url.pathname === "/api/deployment" || url.pathname === "/deploy") && req.method === "POST") {
       try {
         const rawText = await req.text();
-        const result = await DeploymentManager.deploy(rawText);
+        const result = await DeploymentManager.deploy(rawText, { build: false });
+        await DataManager.initialize();
         return Response.json(result, { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (err: any) {
         console.error("Deployment error:", err);
@@ -985,12 +1217,52 @@ ${indexRoutes}  },
       }
     }
 
-    // List deployment status
+    // POST /api/fetch-remote or GET /api/fetch-remote -> download remote YAML without immediate deploying
+    if ((url.pathname === "/api/fetch-remote" || url.pathname === "/api/fetch-url") && (req.method === "POST" || req.method === "GET")) {
+      try {
+        let targetUrl = url.searchParams.get("url");
+        if (req.method === "POST") {
+          const body = await req.json().catch(() => ({}));
+          targetUrl = body.url || targetUrl;
+        }
+        if (!targetUrl) {
+          return Response.json({ success: false, error: "url parameter required" }, { status: 400, headers: corsHeaders });
+        }
+        const resp = await fetch(targetUrl);
+        if (!resp.ok) {
+          return Response.json({ success: false, error: "Failed to fetch URL: " + resp.status + " " + resp.statusText }, { status: 400, headers: corsHeaders });
+        }
+        const content = await resp.text();
+        return Response.json({ success: true, url: targetUrl, content }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // POST /api/deployment/parse -> parses deployment YAML into JSON structure for UI overviews
+    if (url.pathname === "/api/deployment/parse" && req.method === "POST") {
+      try {
+        const rawText = await req.text();
+        let doc: any = null;
+        try {
+          doc = yaml.load(rawText);
+        } catch {
+          doc = JSON.parse(rawText);
+        }
+        return Response.json({ success: true, parsed: doc }, { headers: corsHeaders });
+      } catch (err: any) {
+        return Response.json({ success: false, error: err.message }, { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // List deployment status and existing deployments
     if (url.pathname === "/api/deployments" && req.method === "GET") {
       return Response.json({
         lastDeployment: DeploymentManager.getStatus(),
+        existingDeployments: DataManager.listDataFiles("deployments"),
         products: DataManager.listProducts(),
         users: DataManager.listUsers(),
+        proxies: DataManager.listDataFiles("proxies"),
       }, { headers: corsHeaders });
     }
 
@@ -1008,6 +1280,44 @@ ${indexRoutes}  },
     if (url.pathname === "/api/kvm" && req.method === "GET") {
       const { globalKvmStore } = await import("./lib/policies/KeyValueMapOperations");
       return Response.json(globalKvmStore, { headers: corsHeaders });
+    }
+
+    // Traces API
+    if (url.pathname === "/api/traces" && req.method === "GET") {
+      return Response.json(TraceManager.getRecentTraces(), { headers: corsHeaders });
+    }
+
+    if (url.pathname.startsWith("/api/traces/") && req.method === "GET") {
+      const traceId = url.pathname.replace(/^\\/api\\/traces\\//, "");
+      const format = url.searchParams.get("format");
+      if (format === "apigee") {
+        const apigeeTrace = TraceManager.getApigeeTrace(traceId);
+        if (!apigeeTrace) return Response.json({ error: "Trace not found" }, { status: 404, headers: corsHeaders });
+        return Response.json(apigeeTrace, { headers: corsHeaders });
+      }
+      if (format === "otel") {
+        const otelTrace = TraceManager.getOtelTrace(traceId);
+        if (!otelTrace) return Response.json({ error: "Trace not found" }, { status: 404, headers: corsHeaders });
+        return Response.json(otelTrace, { headers: corsHeaders });
+      }
+      const rawTrace = TraceManager.getTrace(traceId);
+      if (!rawTrace) return Response.json({ error: "Trace not found" }, { status: 404, headers: corsHeaders });
+      return Response.json(rawTrace, { headers: corsHeaders });
+    }
+
+    if ((url.pathname === "/api/traces" || url.pathname === "/api/traces/clear") && (req.method === "DELETE" || req.method === "POST")) {
+      TraceManager.clear();
+      return Response.json({ success: true, message: "Traces cleared" }, { headers: corsHeaders });
+    }
+
+    // List deployment tests
+    if (url.pathname === "/api/tests" && req.method === "GET") {
+      return Response.json(DataManager.listTests(), { headers: corsHeaders });
+    }
+
+    if (url.pathname.startsWith("/api/tests/") && req.method === "GET") {
+      const proxyName = url.pathname.replace(/^\\/api\\/tests\\//, "");
+      return Response.json(DataManager.getTestsForProxy(proxyName), { headers: corsHeaders });
     }
 
     // List templates
@@ -1031,9 +1341,9 @@ ${indexRoutes}  },
         const pathId = url.pathname.startsWith("/api/templates/") ? url.pathname.split("/").pop() : undefined;
         const rawText = await req.text();
         const parsed = await parseTemplateRequestBody(rawText, req.headers.get("content-type") || "");
-        
+
         if (parsed.isDeployment) {
-          const result = await DeploymentManager.deploy(parsed.content);
+          const result = await DeploymentManager.deploy(parsed.content, { build: false });
           return Response.json(result, { headers: corsHeaders });
         }
 
@@ -1043,7 +1353,7 @@ ${indexRoutes}  },
         }
         TemplateManager.createOrUpdate(name, parsed.content);
         if (url.searchParams.get("deploy") !== "false") {
-          await runBuild();
+          await runBuild({ deferWrites: 50 });
         }
         return Response.json({ success: true, name, deployed: true }, { headers: corsHeaders });
       } catch (err: any) {
@@ -1059,7 +1369,7 @@ ${indexRoutes}  },
         const parsed = await parseTemplateRequestBody(rawText, req.headers.get("content-type") || "");
 
         if (parsed.isDeployment) {
-          const result = await DeploymentManager.deploy(parsed.content);
+          const result = await DeploymentManager.deploy(parsed.content, { build: false });
           return Response.json(result, { headers: corsHeaders });
         }
 
@@ -1069,7 +1379,7 @@ ${indexRoutes}  },
         }
         TemplateManager.createOrUpdate(name, parsed.content);
         if (url.searchParams.get("deploy") !== "false") {
-          await runBuild();
+          await runBuild({ deferWrites: 50 });
         }
         return Response.json({ success: true, name, deployed: true }, { headers: corsHeaders });
       } catch (err: any) {
@@ -1084,7 +1394,7 @@ ${indexRoutes}  },
       if (!deleted) {
         return Response.json({ success: false, error: "Template not found" }, { status: 404, headers: corsHeaders });
       }
-      await runBuild();
+      await runBuild({ deferWrites: 50 });
       return Response.json({ success: true }, { headers: corsHeaders });
     }
 
@@ -1095,14 +1405,74 @@ ${indexRoutes}  },
     if (await file.exists()) {
       return new Response(file, { headers: corsHeaders });
     }
+
+    if (req.headers.get("accept")?.includes("text/html")) {
+      const indexFile = Bun.file("./public/index.html");
+      if (await indexFile.exists()) {
+        return new Response(indexFile, { headers: { ...corsHeaders, "Content-Type": "text/html;charset=utf-8" } });
+      }
+    }
+
     return new Response("Not Found", { status: 404, headers: corsHeaders });
   },
-});
+  });
+}
+
+let server;
+try {
+  server = startBungeeServer(requestedPort);
+} catch (err: any) {
+  if (err?.code === "EADDRINUSE" && !process.env.PORT) {
+    console.warn(\`Port \${requestedPort} is in use, falling back to port 8088\`);
+    server = startBungeeServer(8088);
+  } else {
+    throw err;
+  }
+}
 
 console.log(\`Listening on \${server.url}\`);
 `;
 
-  fs.writeFileSync(INDEX_FILE, indexContent);
+  // 4. Update index.ts (only write if changed to avoid unnecessary watcher restarts)
+  const existingContent = fs.existsSync(INDEX_FILE) ? fs.readFileSync(INDEX_FILE, "utf8") : "";
+  if (existingContent !== indexContent) {
+    pendingWrites.push({ path: INDEX_FILE, content: indexContent });
+  }
+
+  // Clean up stale proxy .ts files in PROXIES_DIR that were not generated in this build
+  const staleFiles: string[] = [];
+  if (fs.existsSync(PROXIES_DIR)) {
+    for (const file of fs.readdirSync(PROXIES_DIR)) {
+      if (file.endsWith(".ts") && !generatedFiles.has(file)) {
+        staleFiles.push(path.join(PROXIES_DIR, file));
+      }
+    }
+  }
+
+  const commitWrites = () => {
+    for (const pw of pendingWrites) {
+      try {
+        const existing = fs.existsSync(pw.path) ? fs.readFileSync(pw.path, "utf8") : null;
+        if (existing !== pw.content) {
+          fs.writeFileSync(pw.path, pw.content);
+        }
+      } catch (e) {
+        console.error("Error writing", pw.path, e);
+      }
+    }
+    for (const sf of staleFiles) {
+      try {
+        fs.unlinkSync(sf);
+      } catch {}
+    }
+  };
+
+  if (options?.deferWrites && options.deferWrites > 0) {
+    setTimeout(commitWrites, options.deferWrites);
+  } else {
+    commitWrites();
+  }
+
   return { success: true, count: compiledProxies.length, proxies: compiledProxies };
 }
 

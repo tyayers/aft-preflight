@@ -678,6 +678,7 @@ export class TraceManager {
           trace.response.statusText,
           trace.response.body || ""
         ),
+        createVariableAccessResult(trace.variables || {}),
       ],
     });
 

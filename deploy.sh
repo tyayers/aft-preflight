@@ -10,7 +10,7 @@ set -euo pipefail
 GCLOUD_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
 GCLOUD_REGION="$(gcloud config get-value run/region 2>/dev/null || gcloud config get-value compute/region 2>/dev/null || true)"
 
-SERVICE_NAME="${SERVICE_NAME:-aft-testpilot}"
+SERVICE_NAME="${SERVICE_NAME:-apigee-preflight}"
 GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-${GCLOUD_PROJECT}}"
 GOOGLE_CLOUD_LOCATION="${GOOGLE_CLOUD_LOCATION:-${REGION:-${GCLOUD_REGION:-us-central1}}}"
 BASE_IMAGE="osonly24"

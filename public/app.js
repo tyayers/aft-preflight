@@ -21,9 +21,26 @@
     selectedItem: null,
     currentTrace: null,
     traces: [],
-    activeTab: 'overview', // 'overview' | 'yaml' | 'tester' | 'tracesList'
+    activeTab: 'overview', // 'overview' | 'yaml' | 'tester' | 'tracesList' | 'analytics'
     activeReqSubtab: 'headers', // 'headers' | 'body'
     activeResSubtab: 'body', // 'body' | 'headers' | 'assertions' | 'trace'
+    // Analytics state
+    analyticsRecords: [],
+    filteredAnalytics: [],
+    analyticsFilters: {
+      search: '',
+      time: 'all',
+      model: 'all',
+      status: 'all',
+      proxy: 'all',
+    },
+    analyticsSort: {
+      field: 'timestamp',
+      direction: 'desc',
+    },
+    analyticsPage: 1,
+    analyticsPageSize: 25,
+    selectedAnalyticsRecord: null,
   };
 
   // DOM Elements
@@ -177,6 +194,46 @@
     traceResPayloadBody: document.getElementById('traceResPayloadBody'),
     traceResPayloadTag: document.getElementById('traceResPayloadTag'),
     btnCopyResPayload: document.getElementById('btnCopyResPayload'),
+    // Analytics Elements
+    btnHeaderAnalytics: document.getElementById('btnHeaderAnalytics'),
+    navSectionAnalytics: document.getElementById('navSectionAnalytics'),
+    navHeaderAnalytics: document.getElementById('navHeaderAnalytics'),
+    badgeNavAnalytics: document.getElementById('badgeNavAnalytics'),
+    navItemsAnalytics: document.getElementById('navItemsAnalytics'),
+    paneAnalytics: document.getElementById('paneAnalytics'),
+    btnSyncTracesToAnalytics: document.getElementById('btnSyncTracesToAnalytics'),
+    btnExportAnalytics: document.getElementById('btnExportAnalytics'),
+    btnRefreshAnalytics: document.getElementById('btnRefreshAnalytics'),
+    analyticsSearchInput: document.getElementById('analyticsSearchInput'),
+    analyticsTimeFilter: document.getElementById('analyticsTimeFilter'),
+    analyticsModelFilter: document.getElementById('analyticsModelFilter'),
+    analyticsStatusFilter: document.getElementById('analyticsStatusFilter'),
+    analyticsProxyFilter: document.getElementById('analyticsProxyFilter'),
+    kpiTotalRequests: document.getElementById('kpiTotalRequests'),
+    kpiSuccessRate: document.getElementById('kpiSuccessRate'),
+    kpiTotalTokens: document.getElementById('kpiTotalTokens'),
+    kpiTokensBreakdown: document.getElementById('kpiTokensBreakdown'),
+    kpiAvgLatency: document.getElementById('kpiAvgLatency'),
+    kpiP95Latency: document.getElementById('kpiP95Latency'),
+    kpiTotalCost: document.getElementById('kpiTotalCost'),
+    kpiCostPerCall: document.getElementById('kpiCostPerCall'),
+    kpiTopModel: document.getElementById('kpiTopModel'),
+    kpiTopProvider: document.getElementById('kpiTopProvider'),
+    chartRequestTimeline: document.getElementById('chartRequestTimeline'),
+    chartTokenUsage: document.getElementById('chartTokenUsage'),
+    chartModelShare: document.getElementById('chartModelShare'),
+    chartLatencyDistribution: document.getElementById('chartLatencyDistribution'),
+    analyticsTableCount: document.getElementById('analyticsTableCount'),
+    paginationPageInfo: document.getElementById('paginationPageInfo'),
+    btnPrevPage: document.getElementById('btnPrevPage'),
+    btnNextPage: document.getElementById('btnNextPage'),
+    analyticsTableBody: document.getElementById('analyticsTableBody'),
+    analyticsDrawerBackdrop: document.getElementById('analyticsDrawerBackdrop'),
+    analyticsDrawer: document.getElementById('analyticsDrawer'),
+    drawerStatusBadge: document.getElementById('drawerStatusBadge'),
+    drawerTraceId: document.getElementById('drawerTraceId'),
+    btnCloseAnalyticsDrawer: document.getElementById('btnCloseAnalyticsDrawer'),
+    analyticsDrawerBody: document.getElementById('analyticsDrawerBody'),
   };
 
   // --------------------------------------------------------------------------
@@ -251,7 +308,9 @@
       url.searchParams.delete('trace');
       url.searchParams.delete('tab');
 
-      if (state.selectedCategory === 'traces' && state.selectedTraceId) {
+      if (state.activeTab === 'analytics' || state.selectedCategory === 'analytics') {
+        url.searchParams.set('tab', 'analytics');
+      } else if (state.selectedCategory === 'traces' && state.selectedTraceId) {
         url.searchParams.set('trace', state.selectedTraceId);
       } else if (state.selectedItem) {
         const cleanName = state.selectedItem.cleanName || state.selectedItem.name.replace(/\.(yaml|yml|json)$/i, '');
@@ -293,6 +352,11 @@
     const productName = params.get('product');
     const userName = params.get('user');
     const tab = params.get('tab');
+
+    if (tab === 'analytics' || window.location.hash === '#analytics' || window.location.hash === '#/analytics') {
+      switchTab('analytics');
+      return true;
+    }
 
     // Also support hash fallback: #/proxies/xxx, #proxy=xxx, #trace=xxx
     let hashResource = null;
@@ -458,6 +522,7 @@
     renderSectionList(el.navItemsProducts, files.products || [], 'products', filter);
     renderSectionList(el.navItemsUsers, files.users || [], 'users', filter);
     renderRecentTraces(state.traces || []);
+    renderAnalyticsSidebar();
   }
 
   function renderSectionList(container, items, category, filter) {
@@ -703,8 +768,8 @@
     renderVisualOverview();
     renderYamlView();
 
-    // If currently on Test Console or tracesList view, switch to overview to show clicked object
-    if (state.activeTab === 'tester' || state.activeTab === 'tracesList') {
+    // If currently on Test Console, tracesList, or analytics view, switch to overview to show clicked object
+    if (state.activeTab === 'tester' || state.activeTab === 'tracesList' || state.activeTab === 'analytics') {
       switchTab('overview');
     } else {
       syncUrl();
@@ -1571,6 +1636,10 @@
   function switchTab(tab) {
     state.activeTab = tab;
 
+    if (tab !== 'analytics') {
+      closeAnalyticsRecordDrawer();
+    }
+
     el.tabBtnOverview.classList.toggle('active', tab === 'overview');
     el.tabBtnYaml.classList.toggle('active', tab === 'yaml');
     el.tabBtnTester.classList.toggle('active', tab === 'tester');
@@ -1579,13 +1648,33 @@
     el.paneYaml.classList.toggle('active', tab === 'yaml');
     el.paneTester.classList.toggle('active', tab === 'tester');
     el.paneTracesList.classList.toggle('active', tab === 'tracesList');
+    if (el.paneAnalytics) {
+      el.paneAnalytics.classList.toggle('active', tab === 'analytics');
+    }
 
-    if (tab === 'tracesList') {
+    if (tab === 'analytics') {
+      state.selectedCategory = 'analytics';
+      state.selectedItem = null;
+      el.itemTypeBadge.textContent = 'ANALYTICS';
+      el.itemTitleDisplay.textContent = 'AI Usage Analytics';
+      el.itemSubpath.textContent = 'Firebase (default) • apigee_analytics';
+      if (el.headerProxyUrls) el.headerProxyUrls.style.display = 'none';
+      renderSidebar();
+      loadAnalyticsData();
+    } else if (tab === 'tracesList') {
       loadRecentTraces();
       if (state.selectedTraceId) {
         showTraceDetailView();
       } else {
         showTracesListView();
+      }
+    } else if (tab === 'overview' || tab === 'yaml') {
+      if ((state.selectedCategory === 'analytics' || state.selectedCategory === 'traces' || !state.selectedItem) && state.dataSummary) {
+        const firstProxy = state.dataSummary.files?.proxies?.[0];
+        if (firstProxy) {
+          selectItem('proxies', firstProxy);
+          return;
+        }
       }
     }
 
@@ -2110,6 +2199,13 @@
       return;
     }
 
+    let endpointPath = url;
+    try {
+      endpointPath = new URL(url, window.location.origin).pathname;
+    } catch (e) {
+      endpointPath = url;
+    }
+
     const method = el.testerVerbSelect.value;
     const headers = {};
     el.headersTableBody.querySelectorAll('tr').forEach(tr => {
@@ -2254,9 +2350,17 @@
         el.resBodyCode.textContent = rawText || '(Empty Stream)';
       }
 
-      // Fetch and display trace profiling
+      // Fetch and display trace profiling & record AI analytics
       if (traceId) {
         loadTraceDetail(traceId);
+        recordCallAnalyticsFromApigeeTrace(traceId, {
+          verb: method,
+          path: endpointPath,
+          statusCode: response.status,
+          statusText: response.statusText,
+          durationMs,
+          proxyName: state.currentProxyName,
+        });
       } else {
         renderEmptyTraceNotice('No x-bungee-trace-id returned. Tracing may be disabled.');
       }
@@ -2913,6 +3017,1095 @@
   }
 
   // --------------------------------------------------------------------------
+  // Apigee Analytics & Firebase Firestore Integration
+  // --------------------------------------------------------------------------
+
+  function renderAnalyticsSidebar() {
+    if (!el.navItemsAnalytics) return;
+    el.navItemsAnalytics.innerHTML = '';
+    const records = state.analyticsRecords || [];
+    if (el.badgeNavAnalytics) {
+      el.badgeNavAnalytics.textContent = records.length;
+    }
+    if (records.length === 0) {
+      el.navItemsAnalytics.innerHTML = '<div style="padding: 6px 12px 6px 28px; font-size: var(--font-xs); color: var(--text-muted);">No records saved</div>';
+      return;
+    }
+
+    records.slice(0, 5).forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'nav-item';
+      if (state.selectedCategory === 'analytics' && state.selectedAnalyticsRecord?.traceId === r.traceId) {
+        item.classList.add('active');
+      }
+      const modelShort = (r.model || 'unknown').replace(/^(google|anthropic|openai)\//i, '');
+      item.innerHTML = `
+        <span class="nav-item-title" title="${escapeHtml(r.traceId || '')}">${escapeHtml(r.proxyName || 'call')} &bull; ${escapeHtml(modelShort)}</span>
+        <span class="nav-item-sub">${r.totalTokens ? r.totalTokens + ' tok' : (r.durationMs || 0) + 'ms'}</span>
+      `;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchTab('analytics');
+        openAnalyticsRecordDrawer(r);
+        closeSidebarIfNarrow();
+      });
+      el.navItemsAnalytics.appendChild(item);
+    });
+  }
+
+  function extractAnalyticsFromApigeeTrace(apigeeTrace, extra = {}) {
+    if (!apigeeTrace && !extra.traceId) return null;
+
+    const session = apigeeTrace?.DebugSession || {};
+    const points = apigeeTrace?.Messages?.[0]?.point || [];
+
+    const aiVariables = {};
+    let reqVerb = extra.verb || '';
+    let reqPath = extra.path || '';
+    let statusCode = extra.statusCode || 200;
+    let statusText = extra.statusText || 'OK';
+    let targetUrl = extra.targetUrl || '';
+    let targetStatus = extra.targetStatus;
+    let clientHeaders = {};
+    let responseHeaders = {};
+
+    for (const point of points) {
+      const results = point.results || [];
+      for (const res of results) {
+        // 1. Variable Access: capture all ai.* variables
+        if (res.actionResult === 'VariableAccess' || res.ActionResult === 'VariableAccess') {
+          const list = res.accessList || [];
+          for (const item of list) {
+            const varName = item.set?.name || item.name;
+            const varVal = item.set?.value !== undefined ? item.set.value : item.value;
+            if (varName && varName.toLowerCase().startsWith('ai.')) {
+              aiVariables[varName] = varVal;
+            }
+          }
+        }
+
+        // 2. Request message
+        if (res.actionResult === 'RequestMessage' || res.ActionResult === 'RequestMessage') {
+          if (res.verb && !reqVerb) reqVerb = res.verb;
+          if (res.uri && !reqPath) reqPath = res.uri;
+          if (Array.isArray(res.headers)) {
+            res.headers.forEach(h => {
+              if (h.name) clientHeaders[h.name.toLowerCase()] = h.value;
+            });
+          }
+        }
+
+        // 3. Response message
+        if (res.actionResult === 'ResponseMessage' || res.ActionResult === 'ResponseMessage') {
+          if (res.statusCode && !extra.statusCode) statusCode = Number(res.statusCode);
+          if (res.reasonPhrase && !extra.statusText) statusText = res.reasonPhrase;
+          if (Array.isArray(res.headers)) {
+            res.headers.forEach(h => {
+              if (h.name) responseHeaders[h.name.toLowerCase()] = h.value;
+            });
+          }
+        }
+
+        // 4. DebugInfo properties
+        if (res.actionResult === 'DebugInfo' || res.ActionResult === 'DebugInfo') {
+          const props = res.properties?.properties || res.properties?.property || [];
+          for (const p of props) {
+            if (!p || !p.name) continue;
+            if (p.name.toLowerCase().startsWith('ai.')) {
+              aiVariables[p.name] = p.value;
+            }
+            if (p.name === 'target.url' && !targetUrl) targetUrl = p.value;
+            if (p.name === 'target.response.status.code' && !targetStatus) targetStatus = Number(p.value);
+          }
+        }
+      }
+    }
+
+    // Merge any extra variables passed directly from runtime trace
+    if (extra.traceVariables) {
+      for (const [k, v] of Object.entries(extra.traceVariables)) {
+        if (k.toLowerCase().startsWith('ai.')) {
+          aiVariables[k] = v;
+        }
+      }
+    }
+
+    // Token extraction
+    const promptTokens = parseInt(
+      aiVariables['ai.prompt_tokens'] || aiVariables['ai.input_tokens'] || aiVariables['ai.promptTokens'] || 0,
+      10
+    ) || 0;
+    const completionTokens = parseInt(
+      aiVariables['ai.completion_tokens'] || aiVariables['ai.output_tokens'] || aiVariables['ai.completionTokens'] || 0,
+      10
+    ) || 0;
+    let totalTokens = parseInt(aiVariables['ai.total_tokens'] || aiVariables['ai.totalTokens'] || 0, 10);
+    if (!totalTokens && (promptTokens > 0 || completionTokens > 0)) {
+      totalTokens = promptTokens + completionTokens;
+    }
+
+    // Model and provider extraction
+    const model = aiVariables['ai.model'] || aiVariables['ai.target_model'] || aiVariables['ai.selected_model'] || extra.model || 'unknown';
+    let provider = aiVariables['ai.provider'] || aiVariables['ai.target_provider'] || extra.provider || 'unknown';
+    if (provider === 'unknown' && model) {
+      if (model.includes('gemini') || model.includes('bison')) provider = 'google';
+      else if (model.includes('claude')) provider = 'anthropic';
+      else if (model.includes('gpt')) provider = 'openai';
+    }
+
+    const cost = parseFloat(aiVariables['ai.cost'] || 0) || (totalTokens ? +(totalTokens * 0.0000015).toFixed(6) : 0);
+
+    return {
+      traceId: session.SessionId || extra.traceId || `trace-${Date.now()}`,
+      proxyName: session.API || extra.proxyName || 'unknown-proxy',
+      timestamp: session.Recorded || extra.timestamp || new Date().toISOString(),
+      verb: (reqVerb || extra.verb || 'GET').toUpperCase(),
+      path: reqPath || extra.path || '/',
+      statusCode: Number(statusCode) || 200,
+      statusText: statusText || 'OK',
+      durationMs: Number(extra.durationMs) || 0,
+      model,
+      provider,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      cost,
+      targetUrl: targetUrl || extra.targetUrl || '',
+      targetStatus: targetStatus || extra.targetStatus,
+      targetDurationMs: Number(extra.targetDurationMs) || 0,
+      organization: session.Organization || 'cloud32x',
+      environment: session.Environment || 'default',
+      aiVariables,
+      clientIp: clientHeaders['x-forwarded-for'] || clientHeaders['client-ip'] || '127.0.0.1',
+      userAgent: clientHeaders['user-agent'] || '',
+    };
+  }
+
+  async function recordCallAnalyticsFromApigeeTrace(traceId, extra = {}) {
+    try {
+      let apigeeTrace = null;
+      let rawTrace = null;
+
+      try {
+        const res = await fetch(`/api/traces/${traceId}?format=apigee`);
+        if (res.ok) apigeeTrace = await res.json();
+      } catch (e) {
+        console.warn('Could not fetch apigee formatted trace for analytics:', e);
+      }
+
+      try {
+        const resRaw = await fetch(`/api/traces/${traceId}`);
+        if (resRaw.ok) rawTrace = await resRaw.json();
+      } catch (e) {
+        console.warn('Could not fetch raw trace for analytics:', e);
+      }
+
+      const payload = extractAnalyticsFromApigeeTrace(apigeeTrace, {
+        ...extra,
+        traceId,
+        proxyName: rawTrace?.proxyName || extra.proxyName,
+        verb: rawTrace?.verb || extra.verb,
+        path: rawTrace?.path || extra.path,
+        statusCode: rawTrace?.status || extra.statusCode,
+        durationMs: rawTrace?.durationMs || extra.durationMs,
+        timestamp: rawTrace?.timestamp ? new Date(rawTrace.timestamp).toISOString() : new Date().toISOString(),
+        targetUrl: rawTrace?.target?.url || extra.targetUrl,
+        targetDurationMs: rawTrace?.target?.durationMs,
+        traceVariables: rawTrace?.variables,
+      });
+
+      if (!payload) return;
+
+      const postRes = await fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (postRes.ok) {
+        state.analyticsRecords.unshift(payload);
+        renderAnalyticsSidebar();
+        if (state.activeTab === 'analytics') {
+          applyAnalyticsFiltersAndRender();
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to record call analytics:', err);
+    }
+  }
+
+  async function syncAllTracesToAnalytics() {
+    const traces = state.traces || [];
+    if (traces.length === 0) {
+      alert('No local execution traces found to sync.');
+      return;
+    }
+
+    if (el.btnSyncTracesToAnalytics) {
+      el.btnSyncTracesToAnalytics.disabled = true;
+      el.btnSyncTracesToAnalytics.innerHTML = `<span>Syncing...</span>`;
+    }
+
+    let synced = 0;
+    try {
+      const existingIds = new Set((state.analyticsRecords || []).map(r => r.traceId));
+      for (const t of traces) {
+        if (!existingIds.has(t.id)) {
+          await recordCallAnalyticsFromApigeeTrace(t.id, {
+            proxyName: t.proxyName,
+            verb: t.verb,
+            path: t.path,
+            statusCode: t.status,
+            durationMs: t.durationMs,
+            targetUrl: t.target?.url,
+          });
+          synced++;
+        }
+      }
+      await loadAnalyticsData(false);
+      alert(`Successfully synced ${synced} new trace(s) to Firebase apigee_analytics.`);
+    } catch (err) {
+      alert('Sync error: ' + err.message);
+    } finally {
+      if (el.btnSyncTracesToAnalytics) {
+        el.btnSyncTracesToAnalytics.disabled = false;
+        el.btnSyncTracesToAnalytics.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span>Sync Traces</span>
+        `;
+      }
+    }
+  }
+
+  async function loadAnalyticsData(showSpinner = true) {
+    if (showSpinner && el.analyticsTableBody) {
+      el.analyticsTableBody.innerHTML = `
+        <tr><td colspan="9" style="text-align:center; padding: 36px; color: var(--text-muted);">
+          Loading analytics records from Firestore (default) database...
+        </td></tr>
+      `;
+    }
+
+    try {
+      const res = await fetch('/api/analytics?limit=500');
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const data = await res.json();
+      state.analyticsRecords = data.records || data.data || [];
+
+      // Update Filter Options
+      updateAnalyticsFilterDropdowns();
+
+      // Render KPI cards, charts, and table
+      applyAnalyticsFiltersAndRender();
+      renderAnalyticsSidebar();
+    } catch (err) {
+      console.error('Failed to load analytics records:', err);
+      if (el.analyticsTableBody) {
+        el.analyticsTableBody.innerHTML = `
+          <tr><td colspan="9" style="text-align:center; padding: 36px; color: var(--status-error);">
+            Failed to retrieve analytics: ${escapeHtml(err.message)}
+          </td></tr>
+        `;
+      }
+    }
+  }
+
+  function updateAnalyticsFilterDropdowns() {
+    const records = state.analyticsRecords || [];
+
+    // Unique models
+    if (el.analyticsModelFilter) {
+      const currentModel = el.analyticsModelFilter.value;
+      const models = Array.from(new Set(records.map(r => r.model).filter(Boolean))).sort();
+      el.analyticsModelFilter.innerHTML = '<option value="all">All AI Models</option>' +
+        models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+      if (models.includes(currentModel)) el.analyticsModelFilter.value = currentModel;
+    }
+
+    // Unique proxies
+    if (el.analyticsProxyFilter) {
+      const currentProxy = el.analyticsProxyFilter.value;
+      const proxies = Array.from(new Set(records.map(r => r.proxyName).filter(Boolean))).sort();
+      el.analyticsProxyFilter.innerHTML = '<option value="all">All Proxies</option>' +
+        proxies.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+      if (proxies.includes(currentProxy)) el.analyticsProxyFilter.value = currentProxy;
+    }
+  }
+
+  function applyAnalyticsFiltersAndRender() {
+    const records = state.analyticsRecords || [];
+    const filters = state.analyticsFilters;
+    const now = Date.now();
+
+    const filtered = records.filter(r => {
+      // 1. Time Window filter
+      if (filters.time !== 'all') {
+        const recordTime = new Date(r.timestamp).getTime();
+        if (isNaN(recordTime)) return true;
+        const diffHours = (now - recordTime) / (1000 * 60 * 60);
+        if (filters.time === '1h' && diffHours > 1) return false;
+        if (filters.time === '24h' && diffHours > 24) return false;
+        if (filters.time === '7d' && diffHours > 168) return false;
+      }
+
+      // 2. Model filter
+      if (filters.model !== 'all' && r.model !== filters.model) {
+        return false;
+      }
+
+      // 3. Status filter
+      if (filters.status !== 'all') {
+        const code = Number(r.statusCode) || 200;
+        if (filters.status === '2xx' && (code < 200 || code >= 300)) return false;
+        if (filters.status === '4xx' && (code < 400 || code >= 500)) return false;
+        if (filters.status === '5xx' && code < 500) return false;
+      }
+
+      // 4. Proxy filter
+      if (filters.proxy !== 'all' && r.proxyName !== filters.proxy) {
+        return false;
+      }
+
+      // 5. Search keyword
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        const inProxy = (r.proxyName || '').toLowerCase().includes(q);
+        const inPath = (r.path || '').toLowerCase().includes(q);
+        const inVerb = (r.verb || '').toLowerCase().includes(q);
+        const inModel = (r.model || '').toLowerCase().includes(q);
+        const inProvider = (r.provider || '').toLowerCase().includes(q);
+        const inTraceId = (r.traceId || '').toLowerCase().includes(q);
+        const inAiVars = r.aiVariables && Object.entries(r.aiVariables).some(
+          ([k, v]) => k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q)
+        );
+        if (!inProxy && !inPath && !inVerb && !inModel && !inProvider && !inTraceId && !inAiVars) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Sort
+    const sortField = state.analyticsSort.field;
+    const sortDir = state.analyticsSort.direction === 'asc' ? 1 : -1;
+    filtered.sort((a, b) => {
+      let va = a[sortField];
+      let vb = b[sortField];
+      if (sortField === 'timestamp') {
+        va = new Date(va).getTime() || 0;
+        vb = new Date(vb).getTime() || 0;
+      } else if (typeof va === 'string') {
+        va = va.toLowerCase();
+        vb = (vb || '').toLowerCase();
+      }
+      if (va < vb) return -1 * sortDir;
+      if (va > vb) return 1 * sortDir;
+      return 0;
+    });
+
+    state.filteredAnalytics = filtered;
+
+    // Update KPI Metric Cards
+    updateAnalyticsKPICards(filtered);
+
+    // Render Charts
+    renderAnalyticsCharts(filtered);
+
+    // Render Data Table
+    renderAnalyticsTable();
+  }
+
+  function updateAnalyticsKPICards(records) {
+    const total = records.length;
+    if (el.kpiTotalRequests) el.kpiTotalRequests.textContent = total.toLocaleString();
+
+    if (total === 0) {
+      if (el.kpiSuccessRate) el.kpiSuccessRate.textContent = '0% Success Rate';
+      if (el.kpiTotalTokens) el.kpiTotalTokens.textContent = '0';
+      if (el.kpiTokensBreakdown) el.kpiTokensBreakdown.textContent = '0 Prompt • 0 Completion';
+      if (el.kpiAvgLatency) el.kpiAvgLatency.textContent = '0 ms';
+      if (el.kpiP95Latency) el.kpiP95Latency.textContent = 'P95: 0 ms';
+      if (el.kpiTotalCost) el.kpiTotalCost.textContent = '$0.00';
+      if (el.kpiCostPerCall) el.kpiCostPerCall.textContent = 'Avg: $0.00 / call';
+      if (el.kpiTopModel) el.kpiTopModel.textContent = '—';
+      if (el.kpiTopProvider) el.kpiTopProvider.textContent = 'Provider: —';
+      return;
+    }
+
+    const successCount = records.filter(r => (Number(r.statusCode) || 200) < 400).length;
+    const rate = ((successCount / total) * 100).toFixed(1);
+    if (el.kpiSuccessRate) {
+      el.kpiSuccessRate.textContent = `${rate}% Success Rate (${successCount}/${total})`;
+      el.kpiSuccessRate.style.color = rate >= 95 ? 'var(--status-success)' : (rate >= 80 ? 'var(--status-warning)' : 'var(--status-error)');
+    }
+
+    // Tokens
+    let promptSum = 0;
+    let completionSum = 0;
+    let totalTokensSum = 0;
+    let totalCostSum = 0;
+    const latencies = [];
+    const modelCounts = {};
+    const modelProviders = {};
+
+    records.forEach(r => {
+      const p = Number(r.promptTokens) || 0;
+      const c = Number(r.completionTokens) || 0;
+      const t = Number(r.totalTokens) || (p + c);
+      promptSum += p;
+      completionSum += c;
+      totalTokensSum += t;
+      totalCostSum += Number(r.cost) || (t * 0.0000015);
+
+      if (r.durationMs !== undefined) {
+        latencies.push(Number(r.durationMs));
+      }
+
+      if (r.model) {
+        modelCounts[r.model] = (modelCounts[r.model] || 0) + 1;
+        if (r.provider) modelProviders[r.model] = r.provider;
+      }
+    });
+
+    if (el.kpiTotalTokens) {
+      el.kpiTotalTokens.textContent = totalTokensSum >= 1000000
+        ? (totalTokensSum / 1000000).toFixed(2) + 'M'
+        : (totalTokensSum >= 1000 ? (totalTokensSum / 1000).toFixed(1) + 'K' : totalTokensSum.toLocaleString());
+    }
+    if (el.kpiTokensBreakdown) {
+      el.kpiTokensBreakdown.textContent = `${promptSum.toLocaleString()} Prompt • ${completionSum.toLocaleString()} Completion`;
+    }
+
+    // Latency
+    latencies.sort((a, b) => a - b);
+    const avgLatency = Math.round(latencies.reduce((acc, v) => acc + v, 0) / (latencies.length || 1));
+    const p95Idx = Math.floor(latencies.length * 0.95);
+    const p95Latency = latencies[p95Idx] !== undefined ? latencies[p95Idx] : avgLatency;
+
+    if (el.kpiAvgLatency) el.kpiAvgLatency.textContent = `${avgLatency} ms`;
+    if (el.kpiP95Latency) el.kpiP95Latency.textContent = `P95: ${p95Latency} ms • Min: ${latencies[0] || 0} ms`;
+
+    // Cost
+    if (el.kpiTotalCost) el.kpiTotalCost.textContent = `$${totalCostSum.toFixed(4)}`;
+    if (el.kpiCostPerCall) el.kpiCostPerCall.textContent = `Avg: $${(totalCostSum / total).toFixed(5)} / call`;
+
+    // Top Model
+    let topModel = '—';
+    let topCount = 0;
+    for (const [m, count] of Object.entries(modelCounts)) {
+      if (count > topCount) {
+        topCount = count;
+        topModel = m;
+      }
+    }
+    if (el.kpiTopModel) {
+      el.kpiTopModel.textContent = topModel;
+      el.kpiTopModel.title = `${topModel} (${topCount} calls, ${((topCount / total) * 100).toFixed(1)}%)`;
+    }
+    if (el.kpiTopProvider) {
+      el.kpiTopProvider.textContent = `Provider: ${modelProviders[topModel] || 'various'} • ${((topCount / total) * 100).toFixed(0)}% share`;
+    }
+  }
+
+  function renderAnalyticsCharts(records) {
+    renderRequestTimelineChart(records);
+    renderTokenUsageChart(records);
+    renderModelShareDonut(records);
+    renderLatencyDistribution(records);
+  }
+
+  // Chart 1: Request Volume & Error Timeline SVG
+  function renderRequestTimelineChart(records) {
+    if (!el.chartRequestTimeline) return;
+    if (records.length === 0) {
+      el.chartRequestTimeline.innerHTML = '<div style="color:var(--text-muted);font-size:var(--font-xs);">No records to visualize</div>';
+      return;
+    }
+
+    const numBuckets = 16;
+    const buckets = Array.from({ length: numBuckets }, (_, i) => ({
+      index: i,
+      success: 0,
+      error: 0,
+      total: 0,
+      label: '',
+    }));
+
+    const timestamps = records.map(r => new Date(r.timestamp).getTime()).filter(t => !isNaN(t));
+    const minT = timestamps.length ? Math.min(...timestamps) : Date.now() - 3600000;
+    const maxT = timestamps.length ? Math.max(...timestamps) : Date.now();
+    const span = Math.max(maxT - minT, 60000);
+
+    records.forEach(r => {
+      const t = new Date(r.timestamp).getTime();
+      const pos = isNaN(t) ? 0 : Math.min(numBuckets - 1, Math.max(0, Math.floor(((t - minT) / span) * numBuckets)));
+      const isErr = (Number(r.statusCode) || 200) >= 400;
+      if (isErr) buckets[pos].error++;
+      else buckets[pos].success++;
+      buckets[pos].total++;
+    });
+
+    const maxCalls = Math.max(1, ...buckets.map(b => b.total));
+    const w = 520;
+    const h = 180;
+    const padX = 35;
+    const padY = 25;
+    const chartW = w - padX * 2;
+    const chartH = h - padY * 2;
+    const barW = Math.max(6, Math.floor(chartW / numBuckets) - 4);
+
+    let barsSvg = '';
+    buckets.forEach((b, idx) => {
+      const x = padX + idx * (chartW / numBuckets) + 2;
+      const totalH = (b.total / maxCalls) * chartH;
+      const errH = (b.error / maxCalls) * chartH;
+      const succH = totalH - errH;
+
+      const yErr = h - padY - errH;
+      const ySucc = yErr - succH;
+
+      if (b.total === 0) {
+        barsSvg += `<rect x="${x}" y="${h - padY - 2}" width="${barW}" height="2" fill="var(--border-subtle)" opacity="0.3" rx="1"/>`;
+      } else {
+        if (succH > 0) {
+          barsSvg += `<rect class="chart-bar-rect" x="${x}" y="${ySucc}" width="${barW}" height="${succH}" fill="#10b981" rx="2">
+            <title>Time slot ${idx + 1}: ${b.success} Success, ${b.error} Errors</title>
+          </rect>`;
+        }
+        if (errH > 0) {
+          barsSvg += `<rect class="chart-bar-rect" x="${x}" y="${yErr}" width="${barW}" height="${errH}" fill="#ef4444" rx="2">
+            <title>Time slot ${idx + 1}: ${b.error} Errors</title>
+          </rect>`;
+        }
+      }
+    });
+
+    const yMid = Math.round(maxCalls / 2);
+    el.chartRequestTimeline.innerHTML = `
+      <svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;">
+        <line x1="${padX}" y1="${padY}" x2="${w - padX}" y2="${padY}" class="chart-grid-line"/>
+        <line x1="${padX}" y1="${padY + chartH / 2}" x2="${w - padX}" y2="${padY + chartH / 2}" class="chart-grid-line"/>
+        <line x1="${padX}" y1="${h - padY}" x2="${w - padX}" y2="${h - padY}" stroke="var(--border-subtle)" stroke-width="1"/>
+        <text x="${padX - 8}" y="${padY + 4}" class="chart-axis-text" text-anchor="end">${maxCalls}</text>
+        <text x="${padX - 8}" y="${padY + chartH / 2 + 4}" class="chart-axis-text" text-anchor="end">${yMid}</text>
+        <text x="${padX - 8}" y="${h - padY}" class="chart-axis-text" text-anchor="end">0</text>
+        ${barsSvg}
+        <text x="${padX}" y="${h - 8}" class="chart-axis-text" text-anchor="start">Oldest</text>
+        <text x="${w - padX}" y="${h - 8}" class="chart-axis-text" text-anchor="end">Latest</text>
+      </svg>
+    `;
+  }
+
+  // Chart 2: Token Consumption Breakdown SVG
+  function renderTokenUsageChart(records) {
+    if (!el.chartTokenUsage) return;
+    if (records.length === 0) {
+      el.chartTokenUsage.innerHTML = '<div style="color:var(--text-muted);font-size:var(--font-xs);">No token data</div>';
+      return;
+    }
+
+    const numBuckets = 16;
+    const buckets = Array.from({ length: numBuckets }, () => ({ prompt: 0, completion: 0, total: 0 }));
+
+    const timestamps = records.map(r => new Date(r.timestamp).getTime()).filter(t => !isNaN(t));
+    const minT = timestamps.length ? Math.min(...timestamps) : Date.now() - 3600000;
+    const maxT = timestamps.length ? Math.max(...timestamps) : Date.now();
+    const span = Math.max(maxT - minT, 60000);
+
+    records.forEach(r => {
+      const t = new Date(r.timestamp).getTime();
+      const pos = isNaN(t) ? 0 : Math.min(numBuckets - 1, Math.max(0, Math.floor(((t - minT) / span) * numBuckets)));
+      const p = Number(r.promptTokens) || 0;
+      const c = Number(r.completionTokens) || 0;
+      buckets[pos].prompt += p;
+      buckets[pos].completion += c;
+      buckets[pos].total += (p + c);
+    });
+
+    const maxTokens = Math.max(1, ...buckets.map(b => b.total));
+    const w = 520;
+    const h = 180;
+    const padX = 45;
+    const padY = 25;
+    const chartW = w - padX * 2;
+    const chartH = h - padY * 2;
+    const barW = Math.max(6, Math.floor(chartW / numBuckets) - 4);
+
+    let barsSvg = '';
+    buckets.forEach((b, idx) => {
+      const x = padX + idx * (chartW / numBuckets) + 2;
+      const promptH = (b.prompt / maxTokens) * chartH;
+      const compH = (b.completion / maxTokens) * chartH;
+
+      const yPrompt = h - padY - promptH;
+      const yComp = yPrompt - compH;
+
+      if (b.total === 0) {
+        barsSvg += `<rect x="${x}" y="${h - padY - 2}" width="${barW}" height="2" fill="var(--border-subtle)" opacity="0.3" rx="1"/>`;
+      } else {
+        if (promptH > 0) {
+          barsSvg += `<rect class="chart-bar-rect" x="${x}" y="${yPrompt}" width="${barW}" height="${promptH}" fill="#3b82f6" rx="2">
+            <title>Prompt: ${b.prompt.toLocaleString()} tokens</title>
+          </rect>`;
+        }
+        if (compH > 0) {
+          barsSvg += `<rect class="chart-bar-rect" x="${x}" y="${yComp}" width="${barW}" height="${compH}" fill="#8b5cf6" rx="2">
+            <title>Completion: ${b.completion.toLocaleString()} tokens</title>
+          </rect>`;
+        }
+      }
+    });
+
+    const fmt = (val) => val >= 1000000 ? (val / 1000000).toFixed(1) + 'M' : (val >= 1000 ? Math.round(val / 1000) + 'K' : val);
+
+    el.chartTokenUsage.innerHTML = `
+      <svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;">
+        <line x1="${padX}" y1="${padY}" x2="${w - padX}" y2="${padY}" class="chart-grid-line"/>
+        <line x1="${padX}" y1="${padY + chartH / 2}" x2="${w - padX}" y2="${padY + chartH / 2}" class="chart-grid-line"/>
+        <line x1="${padX}" y1="${h - padY}" x2="${w - padX}" y2="${h - padY}" stroke="var(--border-subtle)" stroke-width="1"/>
+        <text x="${padX - 8}" y="${padY + 4}" class="chart-axis-text" text-anchor="end">${fmt(maxTokens)}</text>
+        <text x="${padX - 8}" y="${padY + chartH / 2 + 4}" class="chart-axis-text" text-anchor="end">${fmt(maxTokens / 2)}</text>
+        <text x="${padX - 8}" y="${h - padY}" class="chart-axis-text" text-anchor="end">0</text>
+        ${barsSvg}
+        <text x="${padX}" y="${h - 8}" class="chart-axis-text" text-anchor="start">Oldest</text>
+        <text x="${w - padX}" y="${h - 8}" class="chart-axis-text" text-anchor="end">Latest</text>
+      </svg>
+    `;
+  }
+
+  // Chart 3: Model Usage Share Donut Chart
+  function renderModelShareDonut(records) {
+    if (!el.chartModelShare) return;
+    if (records.length === 0) {
+      el.chartModelShare.innerHTML = '<div style="color:var(--text-muted);font-size:var(--font-xs);">No model data</div>';
+      return;
+    }
+
+    const counts = {};
+    records.forEach(r => {
+      const m = r.model || 'unknown';
+      counts[m] = (counts[m] || 0) + 1;
+    });
+
+    const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#64748b'];
+    const total = records.length;
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+    const radius = 60;
+    const circumference = 2 * Math.PI * radius;
+    let accumulatedOffset = 0;
+    let arcsSvg = '';
+    let legendHtml = '<div style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto;">';
+
+    sorted.forEach(([model, count], idx) => {
+      const color = palette[idx % palette.length];
+      const pct = (count / total) * 100;
+      const strokeLength = (count / total) * circumference;
+      const strokeOffset = -accumulatedOffset;
+      accumulatedOffset += strokeLength;
+
+      arcsSvg += `
+        <circle cx="90" cy="90" r="${radius}" fill="none" stroke="${color}" stroke-width="22"
+          stroke-dasharray="${strokeLength} ${circumference - strokeLength}"
+          stroke-dashoffset="${strokeOffset}">
+          <title>${model}: ${count} calls (${pct.toFixed(1)}%)</title>
+        </circle>
+      `;
+
+      legendHtml += `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; cursor:pointer;"
+          onclick="state.analyticsFilters.model = '${escapeHtml(model)}'; el.analyticsModelFilter.value = '${escapeHtml(model)}'; applyAnalyticsFiltersAndRender();">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="width:10px; height:10px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
+            <span style="font-family:var(--font-mono); font-size:11px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(model)}</span>
+          </div>
+          <span style="font-weight:600; color:var(--text-sub);">${pct.toFixed(1)}% <span style="font-weight:400; color:var(--text-muted);">(${count})</span></span>
+        </div>
+      `;
+    });
+    legendHtml += '</div>';
+
+    el.chartModelShare.innerHTML = `
+      <div style="position:relative; width:180px; height:180px; flex-shrink:0;">
+        <svg width="180" height="180" viewBox="0 0 180 180" style="transform: rotate(-90deg);">
+          ${arcsSvg}
+        </svg>
+        <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;">
+          <span style="font-size:22px; font-weight:700; color:var(--text-main); line-height:1;">${total}</span>
+          <span style="font-size:10px; text-transform:uppercase; color:var(--text-muted); letter-spacing:0.05em;">CALLS</span>
+        </div>
+      </div>
+      <div style="flex:1;">
+        ${legendHtml}
+      </div>
+    `;
+  }
+
+  // Chart 4: Response Latency Distribution
+  function renderLatencyDistribution(records) {
+    if (!el.chartLatencyDistribution) return;
+    if (records.length === 0) {
+      el.chartLatencyDistribution.innerHTML = '<div style="color:var(--text-muted);font-size:var(--font-xs);">No latency data</div>';
+      return;
+    }
+
+    const tiers = [
+      { label: '< 100 ms', count: 0, color: '#10b981' },
+      { label: '100 - 300 ms', count: 0, color: '#34d399' },
+      { label: '300 - 600 ms', count: 0, color: '#3b82f6' },
+      { label: '600 ms - 1 s', count: 0, color: '#f59e0b' },
+      { label: '1 s - 2 s', count: 0, color: '#f97316' },
+      { label: '> 2 s', count: 0, color: '#ef4444' },
+    ];
+
+    records.forEach(r => {
+      const ms = Number(r.durationMs) || 0;
+      if (ms < 100) tiers[0].count++;
+      else if (ms < 300) tiers[1].count++;
+      else if (ms < 600) tiers[2].count++;
+      else if (ms < 1000) tiers[3].count++;
+      else if (ms < 2000) tiers[4].count++;
+      else tiers[5].count++;
+    });
+
+    const maxCount = Math.max(1, ...tiers.map(t => t.count));
+    const total = records.length;
+
+    let html = '<div style="display:flex; flex-direction:column; gap:8px; width:100%; padding: 4px 10px;">';
+    tiers.forEach(t => {
+      const pct = ((t.count / total) * 100).toFixed(1);
+      const barWidth = Math.max(2, Math.round((t.count / maxCount) * 100));
+      html += `
+        <div style="display:flex; align-items:center; gap:10px; font-size:12px;">
+          <span style="width:85px; font-family:var(--font-mono); font-size:11px; color:var(--text-sub); text-align:right;">${t.label}</span>
+          <div style="flex:1; background:var(--bg-surface-subtle); height:16px; border-radius:4px; overflow:hidden; position:relative;">
+            <div style="width:${barWidth}%; background:${t.color}; height:100%; border-radius:4px; transition:width 0.2s ease;"></div>
+          </div>
+          <span style="width:65px; font-weight:600; font-size:11px; text-align:right; color:var(--text-main);">${t.count} <span style="font-weight:400; color:var(--text-muted); font-size:10px;">(${pct}%)</span></span>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    el.chartLatencyDistribution.innerHTML = html;
+  }
+
+  // Interactive Data Table Rendering
+  function renderAnalyticsTable() {
+    if (!el.analyticsTableBody) return;
+    const records = state.filteredAnalytics || [];
+    const total = records.length;
+
+    if (total === 0) {
+      el.analyticsTableBody.innerHTML = `
+        <tr><td colspan="9" style="text-align:center; padding: 36px; color: var(--text-muted);">
+          No matching analytics records. Try clearing search filters or execute calls via the Test Console.
+        </td></tr>
+      `;
+      if (el.analyticsTableCount) el.analyticsTableCount.textContent = 'Showing 0 of 0 records';
+      if (el.paginationPageInfo) el.paginationPageInfo.textContent = 'Page 1 of 1';
+      if (el.btnPrevPage) el.btnPrevPage.disabled = true;
+      if (el.btnNextPage) el.btnNextPage.disabled = true;
+      return;
+    }
+
+    const pageSize = state.analyticsPageSize || 25;
+    const maxPage = Math.max(1, Math.ceil(total / pageSize));
+    if (state.analyticsPage > maxPage) state.analyticsPage = maxPage;
+    const startIdx = (state.analyticsPage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, total);
+    const pageRecords = records.slice(startIdx, endIdx);
+
+    if (el.analyticsTableCount) {
+      el.analyticsTableCount.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} records`;
+    }
+    if (el.paginationPageInfo) {
+      el.paginationPageInfo.textContent = `Page ${state.analyticsPage} of ${maxPage}`;
+    }
+    if (el.btnPrevPage) el.btnPrevPage.disabled = state.analyticsPage <= 1;
+    if (el.btnNextPage) el.btnNextPage.disabled = state.analyticsPage >= maxPage;
+
+    el.analyticsTableBody.innerHTML = '';
+    pageRecords.forEach(r => {
+      const tr = document.createElement('tr');
+      const timeDate = new Date(r.timestamp);
+      const timeFormatted = isNaN(timeDate.getTime()) ? (r.timestamp || '—') : timeDate.toLocaleTimeString();
+      const dateFormatted = isNaN(timeDate.getTime()) ? '' : timeDate.toLocaleDateString();
+
+      const statusCode = Number(r.statusCode) || 200;
+      let statusClass = 'status-2xx';
+      if (statusCode >= 500) statusClass = 'status-5xx';
+      else if (statusCode >= 400) statusClass = 'status-4xx';
+
+      const provider = (r.provider || '').toLowerCase();
+      let providerClass = '';
+      if (provider === 'google') providerClass = 'provider-google';
+      else if (provider === 'openai') providerClass = 'provider-openai';
+      else if (provider === 'anthropic') providerClass = 'provider-anthropic';
+
+      const aiVarsCount = r.aiVariables ? Object.keys(r.aiVariables).length : 0;
+      const totalTok = Number(r.totalTokens) || 0;
+      const promptTok = Number(r.promptTokens) || 0;
+      const compTok = Number(r.completionTokens) || 0;
+
+      tr.innerHTML = `
+        <td title="${escapeHtml(r.timestamp)}">
+          <div style="font-weight:600;">${escapeHtml(timeFormatted)}</div>
+          <div style="font-size:10px; color:var(--text-muted);">${escapeHtml(dateFormatted)}</div>
+        </td>
+        <td>
+          <span style="font-weight:600; color:var(--text-main);">${escapeHtml(r.proxyName || 'proxy')}</span>
+        </td>
+        <td>
+          <span class="badge badge-subtle" style="font-size:10px; font-weight:700; margin-right:4px;">${escapeHtml(r.verb || 'GET')}</span>
+          <span style="font-family:var(--font-mono); font-size:11px;" title="${escapeHtml(r.path || '/')}">${escapeHtml((r.path || '/').substring(0, 32))}${(r.path || '').length > 32 ? '…' : ''}</span>
+        </td>
+        <td>
+          <span class="model-badge">
+            ${provider ? `<span class="provider-pill ${providerClass}">${escapeHtml(provider)}</span>` : ''}
+            <span>${escapeHtml(r.model || 'unknown')}</span>
+          </span>
+        </td>
+        <td>
+          <span class="status-pill ${statusClass}">${statusCode}</span>
+        </td>
+        <td>
+          <div style="font-weight:600; font-family:var(--font-mono);">${totalTok ? totalTok.toLocaleString() : '—'}</div>
+          ${totalTok ? `<div style="font-size:10px; color:var(--text-muted);">${promptTok}/${compTok}</div>` : ''}
+        </td>
+        <td style="font-family:var(--font-mono);">
+          <span>${r.durationMs || 0} ms</span>
+        </td>
+        <td>
+          <span class="badge badge-outline" style="font-size:10px; padding:1px 6px;">${aiVarsCount} vars</span>
+        </td>
+        <td>
+          <button class="btn btn-secondary btn-xs btn-inspect-analytics" data-trace="${escapeHtml(r.traceId || '')}">Inspect</button>
+        </td>
+      `;
+
+      tr.querySelector('.btn-inspect-analytics').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAnalyticsRecordDrawer(r);
+      });
+
+      tr.addEventListener('click', () => {
+        openAnalyticsRecordDrawer(r);
+      });
+
+      el.analyticsTableBody.appendChild(tr);
+    });
+  }
+
+  // Slide-over Record Details Drawer
+  function openAnalyticsRecordDrawer(record) {
+    if (!el.analyticsDrawer || !record) return;
+    state.selectedAnalyticsRecord = record;
+
+    if (el.drawerStatusBadge) {
+      const code = Number(record.statusCode) || 200;
+      el.drawerStatusBadge.textContent = `${code} ${record.statusText || 'OK'}`;
+      el.drawerStatusBadge.className = 'badge badge-outline ' + (code >= 500 ? 'status-5xx' : (code >= 400 ? 'status-4xx' : 'status-2xx'));
+    }
+    if (el.drawerTraceId) {
+      el.drawerTraceId.textContent = record.traceId || 'trace-id';
+    }
+
+    const aiVars = record.aiVariables || {};
+    const aiVarsEntries = Object.entries(aiVars).sort(([a], [b]) => a.localeCompare(b));
+
+    let aiVarsRows = '';
+    if (aiVarsEntries.length === 0) {
+      aiVarsRows = '<tr><td colspan="2" style="text-align:center; padding:16px; color:var(--text-muted);">No "ai." prefixed variables captured for this call.</td></tr>';
+    } else {
+      aiVarsEntries.forEach(([key, val]) => {
+        const valStr = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val);
+        aiVarsRows += `
+          <tr>
+            <td class="ai-var-key">${escapeHtml(key)}</td>
+            <td class="ai-var-val">${escapeHtml(valStr)}</td>
+          </tr>
+        `;
+      });
+    }
+
+    if (el.analyticsDrawerBody) {
+      el.analyticsDrawerBody.innerHTML = `
+        <!-- General Call Metadata -->
+        <div>
+          <div class="drawer-section-title">General Call Information</div>
+          <div class="drawer-grid">
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Proxy Name</span>
+              <span class="drawer-grid-val">${escapeHtml(record.proxyName || '—')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">HTTP Method & Path</span>
+              <span class="drawer-grid-val">${escapeHtml(record.verb || 'GET')} ${escapeHtml(record.path || '/')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Timestamp</span>
+              <span class="drawer-grid-val">${escapeHtml(record.timestamp || '—')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Total Execution Time</span>
+              <span class="drawer-grid-val">${record.durationMs || 0} ms</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">AI Model</span>
+              <span class="drawer-grid-val">${escapeHtml(record.model || '—')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">AI Provider</span>
+              <span class="drawer-grid-val">${escapeHtml(record.provider || '—')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Token Breakdown</span>
+              <span class="drawer-grid-val">${(record.promptTokens || 0).toLocaleString()} Prompt / ${(record.completionTokens || 0).toLocaleString()} Compl</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Total Tokens / Cost</span>
+              <span class="drawer-grid-val">${(record.totalTokens || 0).toLocaleString()} tok &bull; $${Number(record.cost || 0).toFixed(5)}</span>
+            </div>
+            <div class="drawer-grid-item" style="grid-column: span 2;">
+              <span class="drawer-grid-label">Target URL</span>
+              <span class="drawer-grid-val" style="font-family:var(--font-mono); font-size:11px;">${escapeHtml(record.targetUrl || 'Internal / Mock')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Client IP</span>
+              <span class="drawer-grid-val">${escapeHtml(record.clientIp || '—')}</span>
+            </div>
+            <div class="drawer-grid-item">
+              <span class="drawer-grid-label">Organization / Env</span>
+              <span class="drawer-grid-val">${escapeHtml(record.organization || 'cloud32x')} / ${escapeHtml(record.environment || 'default')}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary btn-sm" id="btnOpenDrawerTrace" style="flex:1;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span>View Waterfall in Trace Profiler</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="btnCopyRecordJson">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Copy JSON</span>
+          </button>
+        </div>
+
+        <!-- Extracted "ai." Prefixed Variables Table -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div class="drawer-section-title" style="margin:0;">Extracted "ai." Prefixed Variables (${aiVarsEntries.length})</div>
+            <input type="text" id="drawerAiVarFilter" placeholder="Filter variables..." style="font-size:11px; padding:3px 8px; border-radius:var(--radius-sm); border:1px solid var(--border-light); background:var(--bg-app); color:var(--text-main); outline:none;">
+          </div>
+          <div style="border:1px solid var(--border-light); border-radius:var(--radius-sm); max-height:260px; overflow-y:auto;">
+            <table class="ai-vars-table" id="drawerAiVarsTable">
+              <thead>
+                <tr>
+                  <th style="width:40%;">Variable Name</th>
+                  <th>Extracted Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${aiVarsRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Raw JSON Payload View -->
+        <div>
+          <div class="drawer-section-title">Raw Firestore Analytics Record</div>
+          <pre style="background:var(--bg-code); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border-light); font-family:var(--font-mono); font-size:11px; max-height:220px; overflow-y:auto; color:var(--text-main); margin:0;">${escapeHtml(JSON.stringify(record, null, 2))}</pre>
+        </div>
+      `;
+
+      // Wire drawer action buttons
+      const btnTrace = el.analyticsDrawerBody.querySelector('#btnOpenDrawerTrace');
+      if (btnTrace) {
+        btnTrace.addEventListener('click', () => {
+          closeAnalyticsRecordDrawer();
+          selectTrace(record.traceId);
+        });
+      }
+
+      const btnCopyJson = el.analyticsDrawerBody.querySelector('#btnCopyRecordJson');
+      if (btnCopyJson) {
+        btnCopyJson.addEventListener('click', () => {
+          navigator.clipboard.writeText(JSON.stringify(record, null, 2));
+          const span = btnCopyJson.querySelector('span');
+          const orig = span.textContent;
+          span.textContent = 'Copied!';
+          setTimeout(() => { span.textContent = orig; }, 1500);
+        });
+      }
+
+      const varFilterInput = el.analyticsDrawerBody.querySelector('#drawerAiVarFilter');
+      const varTable = el.analyticsDrawerBody.querySelector('#drawerAiVarsTable tbody');
+      if (varFilterInput && varTable) {
+        varFilterInput.addEventListener('input', (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          varTable.querySelectorAll('tr').forEach(tr => {
+            const text = tr.textContent.toLowerCase();
+            tr.style.display = text.includes(q) ? '' : 'none';
+          });
+        });
+      }
+    }
+
+    el.analyticsDrawer.classList.add('open');
+    if (el.analyticsDrawerBackdrop) el.analyticsDrawerBackdrop.classList.add('active');
+  }
+
+  function closeAnalyticsRecordDrawer() {
+    if (el.analyticsDrawer) el.analyticsDrawer.classList.remove('open');
+    if (el.analyticsDrawerBackdrop) el.analyticsDrawerBackdrop.classList.remove('active');
+    state.selectedAnalyticsRecord = null;
+  }
+
+  function exportAnalyticsData(format = 'json') {
+    const records = state.filteredAnalytics || [];
+    if (records.length === 0) {
+      alert('No records available to export.');
+      return;
+    }
+
+    if (format === 'csv') {
+      const headers = ['traceId', 'timestamp', 'proxyName', 'verb', 'path', 'statusCode', 'durationMs', 'model', 'provider', 'promptTokens', 'completionTokens', 'totalTokens', 'cost', 'targetUrl'];
+      let csv = headers.join(',') + '\n';
+      records.forEach(r => {
+        const row = headers.map(h => {
+          let val = r[h] !== undefined ? String(r[h]) : '';
+          if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+            val = `"${val.replace(/"/g, '""')}"`;
+          }
+          return val;
+        });
+        csv += row.join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `apigee-analytics-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `apigee-analytics-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // Event Listeners Setup
   // --------------------------------------------------------------------------
   function setupEventListeners() {
@@ -2960,28 +4153,30 @@
           closeSidebarIfNarrow();
           return;
         }
+        if (toggleType === 'analytics') {
+          state.selectedCategory = 'analytics';
+          switchTab('analytics');
+          closeSidebarIfNarrow();
+          return;
+        }
         const section = header.closest('.nav-section');
         section.classList.toggle('collapsed');
       });
     });
 
+    if (el.btnHeaderAnalytics) {
+      el.btnHeaderAnalytics.addEventListener('click', () => {
+        state.selectedCategory = 'analytics';
+        switchTab('analytics');
+        closeSidebarIfNarrow();
+      });
+    }
+
     // Main Tab Switching
     el.tabBtnOverview.addEventListener('click', () => {
-      if (state.selectedCategory === 'traces' && state.dataSummary) {
-        const firstProxy = state.dataSummary.files?.proxies?.[0];
-        if (firstProxy) {
-          selectItem('proxies', firstProxy);
-        }
-      }
       switchTab('overview');
     });
     el.tabBtnYaml.addEventListener('click', () => {
-      if (state.selectedCategory === 'traces' && state.dataSummary) {
-        const firstProxy = state.dataSummary.files?.proxies?.[0];
-        if (firstProxy) {
-          selectItem('proxies', firstProxy);
-        }
-      }
       switchTab('yaml');
     });
     el.tabBtnTester.addEventListener('click', () => {
@@ -3196,6 +4391,91 @@
         }
       }
     });
+
+    // Analytics toolbar & controls
+    if (el.btnRefreshAnalytics) {
+      el.btnRefreshAnalytics.addEventListener('click', () => loadAnalyticsData(true));
+    }
+    if (el.btnSyncTracesToAnalytics) {
+      el.btnSyncTracesToAnalytics.addEventListener('click', () => syncAllTracesToAnalytics());
+    }
+    if (el.btnExportAnalytics) {
+      el.btnExportAnalytics.addEventListener('click', () => exportAnalyticsData('json'));
+    }
+    if (el.analyticsSearchInput) {
+      el.analyticsSearchInput.addEventListener('input', (e) => {
+        state.analyticsFilters.search = e.target.value.trim().toLowerCase();
+        state.analyticsPage = 1;
+        applyAnalyticsFiltersAndRender();
+      });
+    }
+    if (el.analyticsTimeFilter) {
+      el.analyticsTimeFilter.addEventListener('change', (e) => {
+        state.analyticsFilters.time = e.target.value;
+        state.analyticsPage = 1;
+        applyAnalyticsFiltersAndRender();
+      });
+    }
+    if (el.analyticsModelFilter) {
+      el.analyticsModelFilter.addEventListener('change', (e) => {
+        state.analyticsFilters.model = e.target.value;
+        state.analyticsPage = 1;
+        applyAnalyticsFiltersAndRender();
+      });
+    }
+    if (el.analyticsStatusFilter) {
+      el.analyticsStatusFilter.addEventListener('change', (e) => {
+        state.analyticsFilters.status = e.target.value;
+        state.analyticsPage = 1;
+        applyAnalyticsFiltersAndRender();
+      });
+    }
+    if (el.analyticsProxyFilter) {
+      el.analyticsProxyFilter.addEventListener('change', (e) => {
+        state.analyticsFilters.proxy = e.target.value;
+        state.analyticsPage = 1;
+        applyAnalyticsFiltersAndRender();
+      });
+    }
+    if (el.btnPrevPage) {
+      el.btnPrevPage.addEventListener('click', () => {
+        if (state.analyticsPage > 1) {
+          state.analyticsPage--;
+          renderAnalyticsTable();
+        }
+      });
+    }
+    if (el.btnNextPage) {
+      el.btnNextPage.addEventListener('click', () => {
+        const pageSize = state.analyticsPageSize || 25;
+        const maxPage = Math.max(1, Math.ceil((state.filteredAnalytics?.length || 0) / pageSize));
+        if (state.analyticsPage < maxPage) {
+          state.analyticsPage++;
+          renderAnalyticsTable();
+        }
+      });
+    }
+    if (el.btnCloseAnalyticsDrawer) {
+      el.btnCloseAnalyticsDrawer.addEventListener('click', closeAnalyticsRecordDrawer);
+    }
+    if (el.analyticsDrawerBackdrop) {
+      el.analyticsDrawerBackdrop.addEventListener('click', closeAnalyticsRecordDrawer);
+    }
+
+    // Analytics table sortable header clicks
+    document.querySelectorAll('.analytics-table th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.getAttribute('data-sort');
+        if (!field) return;
+        if (state.analyticsSort.field === field) {
+          state.analyticsSort.direction = state.analyticsSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.analyticsSort.field = field;
+          state.analyticsSort.direction = field === 'timestamp' ? 'desc' : 'asc';
+        }
+        applyAnalyticsFiltersAndRender();
+      });
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -3206,6 +4486,7 @@
     setupEventListeners();
     loadRuntimeData();
     initDefaultHeaders();
+    loadAnalyticsData(false);
   });
 
 })();

@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
+import { AnalyticsManager } from "../lib/analytics";
 
 describe("Live Server HTTP Endpoints & UI Delivery", () => {
   let serverProcess: any;
@@ -84,5 +85,61 @@ describe("Live Server HTTP Endpoints & UI Delivery", () => {
     expect(json.success).toBe(true);
     expect(json.message).toContain("Build successful");
     expect(json.count).toBeGreaterThanOrEqual(0);
+  });
+
+  it("serves GET /api/analytics and handles POST /api/analytics", async () => {
+    // 1. Test POST /api/analytics
+    const testRecord = {
+      traceId: "test-server-e2e-" + Date.now(),
+      proxyName: "test-proxy",
+      clientReceivedStart: Date.now(),
+      totalResponseTime: 42,
+      targetResponseTime: 38,
+      status: 200,
+      clientRequest: {
+        verb: "POST",
+        uri: "/v1/chat/completions",
+      },
+      clientResponse: {
+        status: 200,
+        reason: "OK",
+      },
+      aiVariables: {
+        "ai.model": "gemini-2.5-flash",
+        "ai.prompt_tokens": 12,
+        "ai.completion_tokens": 48,
+        "ai.total_tokens": 60,
+      },
+      summary: {
+        model: "gemini-2.5-flash",
+        promptTokens: 12,
+        completionTokens: 48,
+        totalTokens: 60,
+      },
+    };
+
+    const postRes = await fetch(`${baseUrl}/api/analytics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(testRecord),
+    });
+    expect(postRes.status).toBe(200);
+    const postJson = await postRes.json();
+    expect(postJson.success).toBe(true);
+    expect(postJson.record).toBeDefined();
+    expect(postJson.record.traceId).toBe(testRecord.traceId);
+
+    // 2. Test GET /api/analytics
+    const getRes = await fetch(`${baseUrl}/api/analytics?limit=10`);
+    expect(getRes.status).toBe(200);
+    const getJson = await getRes.json();
+    expect(getJson.success).toBe(true);
+    expect(Array.isArray(getJson.records)).toBe(true);
+    expect(getJson.count).toBeGreaterThanOrEqual(1);
+
+    // Clean up created record in Firestore
+    if (postJson.record?.id) {
+      await AnalyticsManager.deleteRecord(postJson.record.id);
+    }
   });
 });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AFT PREFLIGHT — Bungee Runtime Explorer & Tester</title>
+  <title>APIGEE PREFLIGHT — TypeScript Runtime Explorer & Tester</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42' fill='none'%3E%3Crect width='42' height='42' rx='10' fill='%23151d30'/%3E%3Crect x='0.5' y='0.5' width='41' height='41' rx='9.5' stroke='%23ffffff' stroke-opacity='0.14'/%3E%3Cpath d='M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57' fill='%23ffffff'/%3E%3C/svg%3E">
   <script src="/js-yaml.min.js"></script>
@@ -20,13 +20,13 @@
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
-      <a href="/" class="brand-logo" id="logoLink" title="AFT PREFLIGHT">
+      <a href="/" class="brand-logo" id="logoLink" title="APIGEE PREFLIGHT">
         <svg class="brand-logo-mark" width="30" height="30" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Aft Logo">
           <rect width="42" height="42" rx="10" fill="#151d30"></rect>
           <rect x="0.5" y="0.5" width="41" height="41" rx="9.5" stroke="#ffffff" stroke-opacity="0.14"></rect>
           <path d="M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57" fill="#ffffff"></path>
         </svg>
-        <span>AFT PREFLIGHT</span>
+        <span>APIGEE PREFLIGHT</span>
       </a>
       <span class="header-divider"></span>
       <span class="app-subtitle">BUNGEE RUNTIME</span>
@@ -49,6 +49,16 @@
       <button class="btn btn-secondary btn-sm" id="btnHeaderTestConsole" title="Open Interactive Endpoint Tester">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         <span>Test Console</span>
+      </button>
+
+      <!-- Analytics Button -->
+      <button class="btn btn-secondary btn-sm" id="btnHeaderAnalytics" title="Open AI Usage Analytics">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+        <span>Analytics</span>
       </button>
 
       <!-- Help Button -->
@@ -144,6 +154,23 @@
             <span class="nav-badge" id="badgeNavTraces">0</span>
           </div>
           <div class="nav-section-items" id="navItemsTraces"></div>
+        </div>
+
+        <!-- Analytics Section -->
+        <div class="nav-section" id="navSectionAnalytics">
+          <div class="nav-section-header" data-toggle="analytics" id="navHeaderAnalytics">
+            <div class="nav-header-left">
+              <span class="chevron-icon">›</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+              <span class="nav-header-title">Analytics</span>
+            </div>
+            <span class="nav-badge" id="badgeNavAnalytics">0</span>
+          </div>
+          <div class="nav-section-items" id="navItemsAnalytics"></div>
         </div>
 
       </div>
@@ -584,6 +611,213 @@
         </div>
       </div>
 
+      <!-- Tab Content 5: Dedicated Analytics Dashboard -->
+      <div class="tab-pane" id="paneAnalytics">
+        <div class="analytics-container">
+          <!-- Analytics Top Header -->
+          <div class="analytics-header">
+            <div class="analytics-title-wrap">
+              <div class="analytics-title-row">
+                <span class="badge badge-primary">FIREBASE FIRESTORE</span>
+                <span class="analytics-collection-tag">collection: apigee_analytics</span>
+              </div>
+              <h2 class="analytics-title">Apigee AI Usage Analytics</h2>
+              <p class="analytics-subtitle">Real-time analysis of the last 500 AI calls extracted from Apigee traces and saved to the (default) Firebase database.</p>
+            </div>
+            <div class="analytics-actions">
+              <button class="btn btn-secondary btn-sm" id="btnSyncTracesToAnalytics" title="Extract and save local traces to Firebase apigee_analytics">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Sync Traces</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btnExportAnalytics" title="Export current analytics records as JSON or CSV">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export</span>
+              </button>
+              <button class="btn btn-primary btn-sm" id="btnRefreshAnalytics" title="Refresh analytics records from Firestore">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                <span>Refresh</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Controls & Filters Toolbar -->
+          <div class="analytics-toolbar">
+            <div class="analytics-search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="analyticsSearchInput" placeholder="Filter by proxy, model, path, trace ID, ai.variable..." autocomplete="off">
+            </div>
+            <div class="analytics-filter-group">
+              <select id="analyticsTimeFilter" class="analytics-select" title="Time Window">
+                <option value="all">All Records (Last 500)</option>
+                <option value="1h">Last 1 Hour</option>
+                <option value="24h">Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+              </select>
+              <select id="analyticsModelFilter" class="analytics-select" title="Filter by Model">
+                <option value="all">All AI Models</option>
+              </select>
+              <select id="analyticsStatusFilter" class="analytics-select" title="Filter by Status">
+                <option value="all">All Statuses</option>
+                <option value="2xx">Success (2xx)</option>
+                <option value="4xx">Client Errors (4xx)</option>
+                <option value="5xx">Server Faults (5xx)</option>
+              </select>
+              <select id="analyticsProxyFilter" class="analytics-select" title="Filter by Proxy">
+                <option value="all">All Proxies</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- KPI Metric Cards Grid -->
+          <div class="analytics-kpi-grid">
+            <div class="analytics-kpi-card">
+              <div class="kpi-label">Total Requests</div>
+              <div class="kpi-value" id="kpiTotalRequests">0</div>
+              <div class="kpi-subtext" id="kpiSuccessRate">100% Success Rate</div>
+            </div>
+            <div class="analytics-kpi-card">
+              <div class="kpi-label">AI Token Consumption</div>
+              <div class="kpi-value" id="kpiTotalTokens">0</div>
+              <div class="kpi-subtext" id="kpiTokensBreakdown">0 Prompt • 0 Completion</div>
+            </div>
+            <div class="analytics-kpi-card">
+              <div class="kpi-label">Avg / P95 Latency</div>
+              <div class="kpi-value" id="kpiAvgLatency">0 ms</div>
+              <div class="kpi-subtext" id="kpiP95Latency">P95: 0 ms</div>
+            </div>
+            <div class="analytics-kpi-card">
+              <div class="kpi-label">Estimated AI Cost</div>
+              <div class="kpi-value" id="kpiTotalCost">$0.00</div>
+              <div class="kpi-subtext" id="kpiCostPerCall">Avg: $0.00 / call</div>
+            </div>
+            <div class="analytics-kpi-card">
+              <div class="kpi-label">Primary AI Model</div>
+              <div class="kpi-value" id="kpiTopModel" style="font-size: var(--font-lg); font-family: var(--font-mono);">—</div>
+              <div class="kpi-subtext" id="kpiTopProvider">Provider: —</div>
+            </div>
+          </div>
+
+          <!-- Interactive Visual Charts Grid -->
+          <div class="analytics-charts-grid">
+            <!-- Chart 1: Request Volume Over Time -->
+            <div class="analytics-chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">Request Volume & Error Timeline</h3>
+                  <div class="chart-card-subtitle">Distribution of calls over time with success/error breakdown</div>
+                </div>
+                <div class="chart-legend" id="legendRequestTimeline">
+                  <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span>Success (2xx)</span>
+                  <span class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span>Errors (4xx/5xx)</span>
+                </div>
+              </div>
+              <div class="chart-body" id="chartRequestTimeline">
+                <!-- SVG / Canvas dynamically injected -->
+              </div>
+            </div>
+
+            <!-- Chart 2: AI Token Usage Breakdown -->
+            <div class="analytics-chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">Token Consumption Breakdown</h3>
+                  <div class="chart-card-subtitle">Prompt tokens vs Completion tokens across calls</div>
+                </div>
+                <div class="chart-legend" id="legendTokenUsage">
+                  <span class="legend-item"><span class="legend-dot" style="background:#3b82f6;"></span>Prompt Tokens</span>
+                  <span class="legend-item"><span class="legend-dot" style="background:#8b5cf6;"></span>Completion Tokens</span>
+                </div>
+              </div>
+              <div class="chart-body" id="chartTokenUsage">
+                <!-- SVG / Canvas dynamically injected -->
+              </div>
+            </div>
+
+            <!-- Chart 3: Model Usage Share -->
+            <div class="analytics-chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">AI Model Distribution</h3>
+                  <div class="chart-card-subtitle">Share of requests by model and provider</div>
+                </div>
+              </div>
+              <div class="chart-body chart-donut-body" id="chartModelShare">
+                <!-- Donut Chart & Legend injected -->
+              </div>
+            </div>
+
+            <!-- Chart 4: Latency Distribution -->
+            <div class="analytics-chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <h3 class="chart-card-title">Response Latency Distribution</h3>
+                  <div class="chart-card-subtitle">Performance breakdown across execution time buckets</div>
+                </div>
+              </div>
+              <div class="chart-body" id="chartLatencyDistribution">
+                <!-- Latency distribution bars injected -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Usage Data Table Section -->
+          <div class="analytics-table-card">
+            <div class="analytics-table-header">
+              <div class="analytics-table-title-area">
+                <h3 class="analytics-table-title">Call Usage Records</h3>
+                <span class="analytics-table-count" id="analyticsTableCount">Showing 0 of 0 records</span>
+              </div>
+              <div class="analytics-table-pagination" id="analyticsPaginationControls">
+                <span class="pagination-page-info" id="paginationPageInfo">Page 1 of 1</span>
+                <button class="btn btn-secondary btn-xs" id="btnPrevPage" disabled>&larr; Prev</button>
+                <button class="btn btn-secondary btn-xs" id="btnNextPage" disabled>Next &rarr;</button>
+              </div>
+            </div>
+
+            <div class="analytics-table-wrapper">
+              <table class="analytics-table">
+                <thead>
+                  <tr>
+                    <th data-sort="timestamp" class="sortable">Time <span class="sort-icon">↕</span></th>
+                    <th data-sort="proxyName" class="sortable">Proxy <span class="sort-icon">↕</span></th>
+                    <th data-sort="verb" class="sortable">Method & Path <span class="sort-icon">↕</span></th>
+                    <th data-sort="model" class="sortable">AI Model <span class="sort-icon">↕</span></th>
+                    <th data-sort="statusCode" class="sortable">Status <span class="sort-icon">↕</span></th>
+                    <th data-sort="totalTokens" class="sortable">Tokens <span class="sort-icon">↕</span></th>
+                    <th data-sort="durationMs" class="sortable">Latency <span class="sort-icon">↕</span></th>
+                    <th>AI Vars</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="analyticsTableBody">
+                  <tr>
+                    <td colspan="9" style="text-align:center; padding: 36px; color: var(--text-muted);">
+                      Loading analytics data from Firestore...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Slide-over Detail Drawer / Inspector for Analytics Record -->
+        <div class="analytics-drawer-backdrop" id="analyticsDrawerBackdrop"></div>
+        <aside class="analytics-drawer" id="analyticsDrawer">
+          <div class="analytics-drawer-header">
+            <div class="drawer-header-meta">
+              <span class="badge badge-outline" id="drawerStatusBadge">200 OK</span>
+              <span class="drawer-trace-id" id="drawerTraceId">trace-id</span>
+            </div>
+            <button class="btn-icon" id="btnCloseAnalyticsDrawer" title="Close drawer">&times;</button>
+          </div>
+          <div class="analytics-drawer-body" id="analyticsDrawerBody">
+            <!-- Dynamically populated detail view -->
+          </div>
+        </aside>
+      </div>
+
     </main>
   </div>
 
@@ -615,7 +849,7 @@
     <div class="modal-header">
       <div class="modal-title-wrap">
         <span class="badge badge-primary">HELP & PROJECTS</span>
-        <h3 id="helpModalTitle">AFT Preflight & Bungee Runtime</h3>
+        <h3 id="helpModalTitle">Apigee Preflight & Bungee Runtime</h3>
       </div>
       <button class="btn-icon" id="btnCloseHelpModal" title="Close (Esc)" aria-label="Close help dialog">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -624,9 +858,9 @@
     <div class="modal-body help-modal-body">
       <!-- General overview -->
       <section class="help-section">
-        <h4 class="help-section-title">About AFT Preflight</h4>
+        <h4 class="help-section-title">About Apigee Preflight</h4>
         <p class="help-text">
-          <strong>AFT Preflight</strong> is an interactive developer test console and runtime explorer for Apigee Templater declarations powered by <strong>Bungee Runtime</strong>. It enables you to inspect proxies, API products, and developer credentials, run live test calls with SSE chunk streaming, and inspect step-by-step policy execution traces in a native Bun execution engine.
+          <strong>Apigee Preflight</strong> is an interactive developer test console and runtime explorer for Apigee Templater declarations powered by <strong>Bungee Runtime</strong>. It enables you to inspect proxies, API products, and developer credentials, run live test calls with SSE chunk streaming, and inspect step-by-step policy execution traces in a native Bun execution engine.
         </p>
       </section>
 
@@ -675,7 +909,7 @@
                 <span>tyayers/aft-preflight</span>
                 <span class="badge badge-primary">This Project</span>
               </div>
-              <div class="help-link-desc">AFT Preflight client & Bungee Runtime execution engine for Apigee Templater projects.</div>
+              <div class="help-link-desc">Apigee Preflight client & Bungee Runtime execution engine for Apigee Templater projects.</div>
             </div>
             <svg class="external-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>

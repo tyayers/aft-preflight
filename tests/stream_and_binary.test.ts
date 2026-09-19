@@ -1,7 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { Http } from "../lib/http";
 import { ApigeeRequest, ApigeeResponse, ApigeeContext } from "../lib/apigee";
-import { SampleProxyProxy } from "../proxies/sample-proxy";
 
 describe("Http Content-Type Helpers", () => {
   it("correctly identifies streaming content types", () => {

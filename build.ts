@@ -433,6 +433,19 @@ async function executeBuild(options?: BuildOptions): Promise<{ success: boolean;
   if (!fs.existsSync(DATA_PROXIES_DIR)) fs.mkdirSync(DATA_PROXIES_DIR, { recursive: true });
   if (!fs.existsSync(TEMPLATES_DIR)) fs.mkdirSync(TEMPLATES_DIR, { recursive: true });
 
+  // 1b. Remove all proxy classes in proxies/ before rebuilding to ensure clean state
+  if (fs.existsSync(PROXIES_DIR)) {
+    for (const file of fs.readdirSync(PROXIES_DIR)) {
+      if (file.endsWith(".ts") || file.endsWith(".js")) {
+        try {
+          fs.unlinkSync(path.join(PROXIES_DIR, file));
+        } catch (err: any) {
+          console.warn(`[build] Warning removing old proxy class ${file}:`, err.message);
+        }
+      }
+    }
+  }
+
   // 2. Compile all data/deployments as input structure:
   // Parse all deployment files, generate proxy yamls from templates and proxies, then generate proxy code
   try {
@@ -624,14 +637,16 @@ async function executeBuild(options?: BuildOptions): Promise<{ success: boolean;
 
       if (policy.type === "Javascript") {
         const jsSource = getJavascriptSource(policy, data.resources || []);
-        const sanitizedJsSource = jsSource.replace(/\brequire\s*\(\s*(['"][^'"]+['"])\s*\)/g, "globalThis.require?.(String($1))");
+        const sanitizedJsSource = jsSource
+          .replace(/\brequire\s*\(\s*(['"][^'"]+['"])\s*\)/g, "globalThis.require?.(String($1))")
+          .replace(/^\s*print\s*\(\s*(contentString|response\.content|response\.event\.current\.content|response\.data|.*Analytics data.*)\s*\)\s*;?\s*$/gm, "");
         const methodName = policyName.replace(/[^a-zA-Z0-9]/g, "_");
         const formattedJsSource = sanitizedJsSource
           .split("\n")
           .map((line) => (line.trim().length > 0 ? `    ${line.trimStart()}` : ""))
           .join("\n");
 
-        jsMethods += `  async ${methodName}(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {\n    const print = console.log;\n${formattedJsSource}\n  }\n\n`;
+        jsMethods += `  async ${methodName}(context: ApigeeContext, request: ApigeeRequest, response: ApigeeResponse): Promise<void> {\n    const print = (...args: any[]) => {\n      const isResp = (v: any) => typeof v === 'string' && (v.includes('"choices"') || v.includes('"candidates"') || v.includes('"finish_reason"'));\n      const filtered = args.filter(a => !isResp(a));\n      if (filtered.length > 0) console.log(...filtered);\n    };\n${formattedJsSource}\n  }\n\n`;
       }
     }
 
@@ -868,10 +883,18 @@ ${targetFaultExecutions ? `        // Target DefaultFaultRule\n${targetFaultExec
         return new Response(
           async function* () {
             if (response && response.body) {
-              for await (const chunk of response.body) {
-                const chunkString = Buffer.from(chunk).toString("utf-8");
-                context.response.content = chunkString;
-${streamingTargetEventFlowExecutions ? streamingTargetEventFlowExecutions + "\n" : ""}${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" : ""}                yield context.response.rawContent;
+              try {
+                for await (const chunk of response.body) {
+                  const chunkString = Buffer.from(chunk).toString("utf-8");
+                  context.response.content = chunkString;
+${streamingTargetEventFlowExecutions ? streamingTargetEventFlowExecutions + "\n" : ""}${streamingResponsePolicyExecutions ? streamingResponsePolicyExecutions + "\n" : ""}                  const yielded = context.response.rawContent !== undefined && context.response.rawContent !== null
+                    ? context.response.rawContent
+                    : chunkString;
+                  context.appendStreamChunk(yielded);
+                  yield context.response.rawContent;
+                }
+              } finally {
+                context.finalizeStreamTrace();
               }
             }
           },
@@ -908,7 +931,11 @@ const corsHeaders = {
   "Access-Control-Expose-Headers": "*",
 };
 
-const print = console.log;
+const print = (...args: any[]) => {
+  const isResp = (v: any) => typeof v === 'string' && (v.includes('"choices"') || v.includes('"candidates"') || v.includes('"finish_reason"'));
+  const filtered = args.filter(a => !isResp(a));
+  if (filtered.length > 0) console.log(...filtered);
+};
 
 // Always initialize DataManager to load YAMLs (deployments, products, kvm, users) on startup
 DataManager.initializeSync();
@@ -945,6 +972,27 @@ ${propertySetBlock}${requestFlowBlock}${targetExecution}${responseFlowBlock}    
         ...corsHeaders,
         ...context.response.headers,
       };
+      if (context.response.rawContent && typeof context.response.rawContent.tee === "function") {
+        const [clientStream, traceStream] = context.response.rawContent.tee();
+        (async () => {
+          try {
+            const reader = traceStream.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunkStr = typeof value === "string" ? value : decoder.decode(value, { stream: true });
+              context.appendStreamChunk(chunkStr);
+            }
+          } catch {} finally {
+            context.finalizeStreamTrace();
+          }
+        })();
+        return new Response(clientStream, {
+          status: context.response.status,
+          headers: responseHeaders,
+        });
+      }
       return new Response(context.response.rawContent, {
         status: context.response.status,
         headers: responseHeaders,
@@ -1439,11 +1487,11 @@ console.log(\`Listening on \${server.url}\`);
     pendingWrites.push({ path: INDEX_FILE, content: indexContent });
   }
 
-  // Clean up stale proxy .ts files in PROXIES_DIR that were not generated in this build
+  // Clean up any stale proxy .ts/.js files in PROXIES_DIR that were not generated in this build
   const staleFiles: string[] = [];
   if (fs.existsSync(PROXIES_DIR)) {
     for (const file of fs.readdirSync(PROXIES_DIR)) {
-      if (file.endsWith(".ts") && !generatedFiles.has(file)) {
+      if ((file.endsWith(".ts") || file.endsWith(".js")) && !generatedFiles.has(file)) {
         staleFiles.push(path.join(PROXIES_DIR, file));
       }
     }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AFT TESTPILOT — Runtime Explorer & Tester</title>
+  <title>AFT PREFLIGHT — Bungee Runtime Explorer & Tester</title>
   <link rel="stylesheet" href="/style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 42 42' fill='none'%3E%3Crect width='42' height='42' rx='10' fill='%23151d30'/%3E%3Crect x='0.5' y='0.5' width='41' height='41' rx='9.5' stroke='%23ffffff' stroke-opacity='0.14'/%3E%3Cpath d='M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57' fill='%23ffffff'/%3E%3C/svg%3E">
   <script src="/js-yaml.min.js"></script>
@@ -13,19 +13,26 @@
   <!-- App Header -->
   <header class="app-header">
     <div class="brand-section">
-      <a href="/" class="brand-logo" id="logoLink" title="AFT TESTPILOT">
+      <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Toggle Navigation Sidebar" aria-label="Toggle navigation menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <a href="/" class="brand-logo" id="logoLink" title="AFT PREFLIGHT">
         <svg class="brand-logo-mark" width="30" height="30" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Aft Logo">
           <rect width="42" height="42" rx="10" fill="#151d30"></rect>
           <rect x="0.5" y="0.5" width="41" height="41" rx="9.5" stroke="#ffffff" stroke-opacity="0.14"></rect>
           <path d="M27.32 16.91L24.09 16.91Q23.44 20.13 22.97 22.49Q22.49 24.86 21.83 27.43Q21.50 28.70 20.75 29.92Q20 31.13 18.99 32.02Q17.92 32.96 16.68 33.48Q15.43 34 14.12 34Q12.93 34 12.19 33.77Q11.46 33.53 11.04 33.17Q10.64 32.80 10.49 32.36Q10.35 31.92 10.35 31.49Q10.35 30.73 10.89 30.15Q11.43 29.57 12.34 29.57Q13.05 29.57 13.56 29.94Q14.08 30.31 14.44 30.83Q14.81 31.34 15.09 31.97Q15.37 32.59 15.52 32.94Q16.07 32.35 16.55 31.14Q17.03 29.94 17.45 27.93L19.78 16.91L17.26 16.91L17.57 15.57L20.07 15.57L20.29 14.57Q20.56 13.34 21.29 12.16Q22.01 10.98 23.04 10.06Q24.03 9.15 25.32 8.57Q26.62 8 27.92 8Q29.06 8 29.81 8.21Q30.55 8.43 30.98 8.81Q31.38 9.16 31.51 9.60Q31.65 10.03 31.65 10.46Q31.65 10.75 31.54 11.10Q31.43 11.45 31.19 11.74Q30.91 12.06 30.59 12.25Q30.27 12.43 29.66 12.43Q28.95 12.43 28.44 12.06Q27.94 11.69 27.58 11.18Q27.21 10.64 26.95 10.03Q26.69 9.42 26.52 9.06Q25.98 9.67 25.55 10.84Q25.12 12.01 24.67 14.07L24.34 15.57L27.64 15.57" fill="#ffffff"></path>
         </svg>
-        <span>AFT TESTPILOT</span>
+        <span>AFT PREFLIGHT</span>
       </a>
       <span class="header-divider"></span>
-      <span class="app-subtitle">RUNTIME EXPLORER & TESTER</span>
+      <span class="app-subtitle">BUNGEE RUNTIME</span>
       <span class="gateway-status-badge" id="gatewayStatusBadge">
         <span class="status-dot"></span>
-        <span id="gatewayStatusText">Runtime Ready</span>
+        <span id="gatewayStatusText">Bungee Runtime Ready</span>
       </span>
     </div>
 
@@ -132,7 +139,7 @@
             <div class="nav-header-left">
               <span class="chevron-icon">›</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              <span class="nav-header-title">Live Traces</span>
+              <span class="nav-header-title">Traces</span>
             </div>
             <span class="nav-badge" id="badgeNavTraces">0</span>
           </div>
@@ -150,6 +157,9 @@
       </div>
     </aside>
 
+    <!-- Mobile / Narrow Screen Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
     <!-- ====================================================================
          Main Workspace Area
          ==================================================================== -->
@@ -163,6 +173,8 @@
             <span class="item-subpath" id="itemSubpath">/v1/chat/completions</span>
           </div>
           <h1 class="item-title" id="itemTitleDisplay">REST-AI-Completions</h1>
+          <!-- Available URLs container for proxies -->
+          <div class="header-proxy-urls" id="headerProxyUrls" style="display: none;"></div>
         </div>
 
         <!-- Mode Tabs: Overview | YAML | Test Console -->
@@ -328,14 +340,32 @@
 
             <!-- Right: Response & Trace Profiler -->
             <div class="tester-box tester-res-box">
-              <div class="tester-box-header">
+              <div class="tester-box-header tester-res-header">
                 <div class="res-meta-badges">
-                  <span class="res-status-badge" id="resStatusBadge">Status: Ready</span>
-                  <span class="res-stat-pill" id="resDurationPill">0 ms</span>
-                  <span class="res-stat-pill" id="resSizePill">0 B</span>
-                  <span class="res-stat-pill res-stream-pill" id="resStreamPill" style="display: none;">Streaming</span>
-                  <span class="res-stat-pill res-assertion-pill" id="resAssertionPill" style="display: none;">Assertions</span>
-                  <span class="res-stat-pill trace-link-pill" id="resTraceIdPill" style="display: none;">Trace Available</span>
+                  <div class="res-stat-card" id="resStatusCard" title="Status: Ready">
+                    <span class="stat-card-label">Status</span>
+                    <span class="stat-card-val res-status-badge" id="resStatusBadge">Ready</span>
+                  </div>
+                  <div class="res-stat-card" id="resDurationCard" title="Latency: 0 ms">
+                    <span class="stat-card-label">Time</span>
+                    <span class="stat-card-val res-stat-pill" id="resDurationPill">0 ms</span>
+                  </div>
+                  <div class="res-stat-card" id="resSizeCard" title="Response Size: 0 B">
+                    <span class="stat-card-label">Size</span>
+                    <span class="stat-card-val res-stat-pill" id="resSizePill">0 B</span>
+                  </div>
+                  <div class="res-stat-card res-stream-card" id="resStreamCard" style="display: none;" title="Streaming Connection">
+                    <span class="stat-card-label">Stream</span>
+                    <span class="stat-card-val res-stat-pill res-stream-pill" id="resStreamPill">Active</span>
+                  </div>
+                  <div class="res-stat-card res-assertion-card clickable" id="resAssertionCard" style="display: none;" title="Assertions Result">
+                    <span class="stat-card-label">Results</span>
+                    <span class="stat-card-val res-stat-pill res-assertion-pill" id="resAssertionPill">None</span>
+                  </div>
+                  <div class="res-stat-card res-trace-card clickable" id="resTraceCard" style="display: none;" title="Trace Profiler">
+                    <span class="stat-card-label">Trace</span>
+                    <span class="stat-card-val res-stat-pill trace-link-pill" id="resTraceIdPill">None</span>
+                  </div>
                 </div>
                 <div class="tester-tabs">
                   <button class="tester-subtab active" data-ressubtab="body" id="resSubtabBtnBody">Response Body</button>
@@ -378,11 +408,17 @@
               <!-- Response Subpane: Step Profiling & Trace -->
               <div class="res-subpane" id="resSubpaneTrace">
                 <div class="trace-toolbar">
-                  <div class="trace-toolbar-left">
+                  <div class="trace-toolbar-left" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <span class="trace-id-label" id="traceIdLabel">Trace: None</span>
-                    <span class="trace-duration-label" id="traceDurationLabel">Total Duration: 0ms</span>
+                    <span class="trace-duration-label" id="traceDurationLabel" style="font-weight: 600;">Total Latency: 0ms</span>
+                    <span class="trace-proxy-time-label" id="traceProxyTimeLabel" style="font-size: var(--font-xs); color: var(--text-muted);">Proxy Processing: 0ms</span>
+                    <span class="trace-target-time-label" id="traceTargetTimeLabel" style="font-size: var(--font-xs); color: var(--text-muted);">Target Processing: 0ms</span>
                   </div>
                   <div class="trace-export-group">
+                    <button class="btn btn-secondary btn-sm" id="btnToggleAllSteps" title="Expand or collapse all step variables">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                      <span id="btnToggleAllStepsText">Expand All</span>
+                    </button>
                     <button class="btn btn-secondary btn-sm" id="btnExportApigee">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                       <span>Apigee Trace</span>
@@ -391,24 +427,12 @@
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                       <span>OTEL Trace</span>
                     </button>
-                    <button class="btn btn-secondary btn-sm" id="btnExportNative">
-                      <span>Bungee JSON</span>
-                    </button>
                   </div>
                 </div>
 
                 <!-- Trace Waterfall / Steps Timeline -->
                 <div class="trace-timeline-container" id="traceTimelineContainer">
                   <div class="trace-empty-notice" id="traceEmptyNotice">Execute an endpoint call to inspect execution steps, timings, and variables.</div>
-                </div>
-
-                <!-- Step Variable Details Drawer -->
-                <div class="step-variables-drawer" id="stepVariablesDrawer" style="display: none;">
-                  <div class="drawer-header">
-                    <span style="font-weight: 600;" id="drawerStepTitle">Step Variables</span>
-                    <button class="btn-icon" id="btnCloseVariablesDrawer">&times;</button>
-                  </div>
-                  <div class="drawer-body" id="drawerStepContent"></div>
                 </div>
               </div>
 
@@ -422,37 +446,131 @@
       <!-- Tab Content 4: Dedicated Traces History List -->
       <div class="tab-pane" id="paneTracesList">
         <div class="traces-list-container">
-          <div class="traces-list-header">
-            <div>
-              <h2 style="font-size: var(--font-2xl); font-weight: 700; margin: 0 0 4px 0;">Runtime Execution Traces</h2>
-              <p style="font-size: var(--font-base); color: var(--text-muted); margin: 0;">Step profiling data collected for proxy calls in Apigee and OTEL formats</p>
+
+          <!-- Root Traces View (Only shown when not inspecting a single trace) -->
+          <div class="traces-list-view" id="tracesListView">
+            <div class="traces-list-header">
+              <div>
+                <h2 style="font-size: var(--font-2xl); font-weight: 700; margin: 0 0 4px 0;">Runtime Execution Traces</h2>
+                <p style="font-size: var(--font-base); color: var(--text-muted); margin: 0;">Step profiling data collected for proxy calls in Apigee and OTEL formats</p>
+              </div>
+              <div class="traces-actions">
+                <button class="btn btn-secondary btn-sm" id="btnClearTraces">Clear All Traces</button>
+                <button class="btn btn-secondary btn-sm" id="btnRefreshTraces">Refresh</button>
+              </div>
             </div>
-            <div class="traces-actions">
-              <button class="btn btn-secondary btn-sm" id="btnClearTraces">Clear All Traces</button>
-              <button class="btn btn-secondary btn-sm" id="btnRefreshTraces">Refresh</button>
+
+            <div class="traces-table-wrapper" id="tracesTableWrapper">
+              <table class="traces-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Proxy</th>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Steps</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tracesTableBody">
+                  <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">No traces recorded yet. Make calls using the Test Console or directly against the runtime.</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <!-- Selected Trace Detail Card (shown when clicking a trace) -->
+          <!-- Individual Trace Detail Card (Shown when inspecting a trace; replaces the list of all traces) -->
           <div class="trace-detail-card" id="traceDetailCard" style="display: none; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 18px; margin-bottom: 20px; box-shadow: var(--shadow-sm); position: relative;">
-            <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-light); gap: 12px; flex-wrap: wrap;">
-              <div>
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                  <span class="badge badge-outline" id="traceDetailMethod">GET</span>
-                  <span style="font-family: var(--font-mono); font-size: var(--font-base); font-weight: 700;" id="traceDetailPath">/v1/chat/completions</span>
-                  <span class="res-status-badge status-2xx" id="traceDetailStatus">200</span>
-                </div>
-                <div style="font-size: var(--font-xs); color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap;">
-                  <span id="traceDetailProxy">Proxy: REST-AI-Completions</span>
-                  <span id="traceDetailDuration">Duration: 0ms</span>
-                  <span id="traceDetailId" style="font-family: var(--font-mono);">ID: trace-...</span>
-                </div>
-              </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-light); gap: 12px; flex-wrap: wrap;">
+              <button class="btn btn-secondary btn-sm" id="btnBackToTracesList" title="Back to All Traces">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                <span>Back to All Traces</span>
+              </button>
               <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="btn btn-secondary btn-sm" id="btnToggleAllStepsDetail" title="Expand or collapse all step variables">
+                  <span id="btnToggleAllStepsDetailText">Expand All</span>
+                </button>
                 <button class="btn btn-secondary btn-sm" id="btnExportApigeeDetail">Apigee Trace</button>
                 <button class="btn btn-secondary btn-sm" id="btnExportOtelDetail">OTEL Trace</button>
-                <button class="btn btn-secondary btn-sm" id="btnExportNativeDetail">Bungee JSON</button>
-                <button class="btn-icon" id="btnCloseTraceDetail" title="Close Trace Inspector" style="margin-left: 6px;">&times;</button>
+                <button class="btn-icon" id="btnCloseTraceDetail" title="Back to All Traces" style="margin-left: 6px;">&times;</button>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-light);">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span class="badge badge-outline" id="traceDetailMethod">GET</span>
+                <span style="font-family: var(--font-mono); font-size: var(--font-base); font-weight: 700;" id="traceDetailPath">/v1/chat/completions</span>
+                <span class="res-status-badge status-2xx" id="traceDetailStatus">200</span>
+              </div>
+              <div style="font-size: var(--font-xs); color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                <span id="traceDetailProxy">Proxy: REST-AI-Completions</span>
+                <span id="traceDetailDuration" style="font-weight: 600;">Total Latency: 0ms</span>
+                <span id="traceDetailProxyDuration">Proxy Processing: 0ms</span>
+                <span id="traceDetailTargetDuration">Target Processing: 0ms</span>
+                <span id="traceDetailId" style="font-family: var(--font-mono);">ID: trace-...</span>
+              </div>
+            </div>
+
+            <!-- Request & Response Inspection Section -->
+            <div class="trace-io-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 16px;">
+              <!-- Request Card -->
+              <div class="trace-io-card" style="background: var(--bg-surface-subtle); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 700; font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-sub);">Request</span>
+                    <span class="badge badge-outline" id="traceReqVerbBadge" style="font-size: 11px;">GET</span>
+                  </div>
+                  <span id="traceReqUrlDisplay" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                </div>
+
+                <!-- Request Headers (collapsible details) -->
+                <details class="trace-headers-accordion" id="traceReqHeadersDetails" open style="border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-surface);">
+                  <summary style="padding: 6px 10px; font-size: var(--font-xs); font-weight: 600; cursor: pointer; color: var(--text-sub); user-select: none;">
+                    Headers (<span id="traceReqHeadersCount">0</span>)
+                  </summary>
+                  <div id="traceReqHeadersBody" style="padding: 6px 10px; max-height: 180px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; border-top: 1px solid var(--border-light);"></div>
+                </details>
+
+                <!-- Request Payload -->
+                <div style="border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-surface); padding: 8px 10px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <span style="font-size: var(--font-xs); font-weight: 600; color: var(--text-sub);">Payload</span>
+                    <button class="btn btn-secondary btn-xs" id="btnCopyReqPayload" style="display: none; padding: 2px 6px; font-size: 10px;">Copy</button>
+                  </div>
+                  <pre id="traceReqPayloadBody" style="margin: 0; max-height: 280px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--text-main);"></pre>
+                </div>
+              </div>
+
+              <!-- Response Card -->
+              <div class="trace-io-card" style="background: var(--bg-surface-subtle); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 700; font-size: var(--font-xs); text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-sub);">Response</span>
+                    <span class="res-status-badge status-2xx" id="traceResStatusBadge" style="font-size: 11px;">200 OK</span>
+                  </div>
+                </div>
+
+                <!-- Response Headers (collapsible details) -->
+                <details class="trace-headers-accordion" id="traceResHeadersDetails" open style="border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-surface);">
+                  <summary style="padding: 6px 10px; font-size: var(--font-xs); font-weight: 600; cursor: pointer; color: var(--text-sub); user-select: none;">
+                    Headers (<span id="traceResHeadersCount">0</span>)
+                  </summary>
+                  <div id="traceResHeadersBody" style="padding: 6px 10px; max-height: 180px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; border-top: 1px solid var(--border-light);"></div>
+                </details>
+
+                <!-- Response Payload -->
+                <div style="border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-surface); padding: 8px 10px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span style="font-size: var(--font-xs); font-weight: 600; color: var(--text-sub);">Payload</span>
+                      <span id="traceResPayloadTag" class="badge badge-outline" style="display: none; font-size: 9px; padding: 1px 5px; color: var(--color-primary); border-color: var(--color-primary); font-weight: 600;">STREAMED</span>
+                    </div>
+                    <button class="btn btn-secondary btn-xs" id="btnCopyResPayload" style="display: none; padding: 2px 6px; font-size: 10px;">Copy</button>
+                  </div>
+                  <pre id="traceResPayloadBody" style="margin: 0; max-height: 280px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--text-main);"></pre>
+                </div>
               </div>
             </div>
 
@@ -461,36 +579,8 @@
 
             <!-- Target Call Container -->
             <div id="traceDetailTargetContainer" style="margin-top: 12px;"></div>
-
-            <!-- Step Variables Drawer for standalone detail -->
-            <div class="step-variables-drawer" id="stepVariablesDrawerDetail" style="display: none;">
-              <div class="drawer-header">
-                <span style="font-weight: 600;" id="drawerStepTitleDetail">Step Variables</span>
-                <button class="btn-icon" id="btnCloseVariablesDrawerDetail">&times;</button>
-              </div>
-              <div class="drawer-body" id="drawerStepContentDetail"></div>
-            </div>
           </div>
 
-          <div class="traces-table-wrapper">
-            <table class="traces-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Proxy</th>
-                  <th>Method</th>
-                  <th>Path</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Steps</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="tracesTableBody">
-                <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">No traces recorded yet. Make calls using the Test Console or directly against the runtime.</td></tr>
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
 
@@ -525,7 +615,7 @@
     <div class="modal-header">
       <div class="modal-title-wrap">
         <span class="badge badge-primary">HELP & PROJECTS</span>
-        <h3 id="helpModalTitle">AFT Testpilot & Apigee Templater</h3>
+        <h3 id="helpModalTitle">AFT Preflight & Bungee Runtime</h3>
       </div>
       <button class="btn-icon" id="btnCloseHelpModal" title="Close (Esc)" aria-label="Close help dialog">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -534,9 +624,9 @@
     <div class="modal-body help-modal-body">
       <!-- General overview -->
       <section class="help-section">
-        <h4 class="help-section-title">About AFT Testpilot</h4>
+        <h4 class="help-section-title">About AFT Preflight</h4>
         <p class="help-text">
-          <strong>AFT Testpilot</strong> is a local developer runtime explorer, visual debugger, and interactive test console for Apigee Templater declarations. It enables you to inspect proxies, API products, and developer credentials, run live test calls with SSE chunk streaming, and inspect step-by-step policy execution traces in a native Bun execution engine.
+          <strong>AFT Preflight</strong> is an interactive developer test console and runtime explorer for Apigee Templater declarations powered by <strong>Bungee Runtime</strong>. It enables you to inspect proxies, API products, and developer credentials, run live test calls with SSE chunk streaming, and inspect step-by-step policy execution traces in a native Bun execution engine.
         </p>
       </section>
 
@@ -579,13 +669,13 @@
       <section class="help-section">
         <h4 class="help-section-title">Source Code & Related Projects</h4>
         <div class="help-links-list">
-          <a href="https://github.com/tyayers/aft-testpilot" target="_blank" rel="noopener noreferrer" class="help-link-card">
+          <a href="https://github.com/tyayers/aft-preflight" target="_blank" rel="noopener noreferrer" class="help-link-card">
             <div class="help-link-info">
               <div class="help-link-name">
-                <span>tyayers/aft-testpilot</span>
+                <span>tyayers/aft-preflight</span>
                 <span class="badge badge-primary">This Project</span>
               </div>
-              <div class="help-link-desc">Local test harness, interactive runner, and runtime explorer for Apigee Templater projects.</div>
+              <div class="help-link-desc">AFT Preflight client & Bungee Runtime execution engine for Apigee Templater projects.</div>
             </div>
             <svg class="external-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>

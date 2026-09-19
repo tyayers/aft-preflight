@@ -2,7 +2,12 @@
   "name": "ai-gateway",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "build": "bun run build.ts",
+    "clean": "bun run clear.ts",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

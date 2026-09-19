@@ -1,6 +1,6 @@
-# AFT-Testpilot Client App (`public/`)
+# AFT-Preflight Client App (`public/`)
 
-The AFT-Testpilot client app is a lightweight, zero-dependency Single-Page Application (SPA) delivered natively by the Bun server at `http://localhost:3000/`. It provides a read-only configuration explorer, visual pipeline inspector, and interactive test console for local Apigee-compatible proxies, products, developers, and execution traces.
+The AFT-Preflight client app is a lightweight, zero-dependency Single-Page Application (SPA) delivered natively by the Bungee Runtime Bun server at `http://localhost:3000/`. It provides a read-only configuration explorer, visual pipeline inspector, and interactive test console for local Apigee-compatible proxies, products, developers, and execution traces.
 
 ---
 
@@ -13,7 +13,7 @@ The AFT-Testpilot client app is a lightweight, zero-dependency Single-Page Appli
   - Flexbox and CSS Grid responsive layouts with custom scrollbars and status badges.
   - Safe YAML parsing and snippet generation using client-side `js-yaml`.
 - **Read-Only Explorer Scope**:
-  - Focuses on runtime exploration and testing: **Proxies**, **Products**, **Users & Apps**, and **Live Traces**.
+  - Focuses on runtime exploration and testing: **Proxies**, **Products**, **Users & Apps**, and **Traces**.
   - Deployments management is intentionally separated from this view (reserved for a dedicated administrative section).
 - **Interactive Testing & Tracing**:
   - Direct request execution against local proxy endpoints.
@@ -45,13 +45,13 @@ The client app consumes the following native Bun server endpoints:
 ## 3. Core Functional Views
 
 ### 3.1. Sidebar & Resource Selector
-- **Live Entity Counters**: Header badges display current counts of loaded Proxies, Products, and Developer Users.
+- **Entity Counters**: Header badges display current counts of loaded Proxies, Products, and Developer Users.
 - **Search & Filter**: Real-time substring filter on entity names across all categories.
 - **Collapsible Category Sections**:
   - **Proxies**: All active proxy configurations (`data/proxies/` and deployments).
   - **Products**: All loaded API products (`data/products/`).
   - **Users & Apps**: Developer accounts with registered credentials (`data/users/`).
-  - **Live Traces**: History of executed requests with status codes and latency.
+  - **Traces**: History of executed requests with status codes and latency.
 
 ---
 

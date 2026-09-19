@@ -5,13 +5,10 @@ import { DataManager } from "./lib/DataManager";
 import { DeploymentManager } from "./lib/DeploymentManager";
 import { TraceManager } from "./lib/tracer";
 import { runBuild } from "./build";
-import { test_converted_basic_apiProxy } from "./proxies/test-converted-basic-api";
-import { testlocalProxy } from "./proxies/testlocal";
-import { test_proxy_with_testsProxy } from "./proxies/test-proxy-with-tests";
-import { sample_proxyProxy } from "./proxies/sample-proxy";
-import { test_feature_proxyProxy } from "./proxies/test-feature-proxy";
+import { REST_AI_MessagesProxy } from "./proxies/REST-AI-Messages";
+import { REST_AI_InteractionsProxy } from "./proxies/REST-AI-Interactions";
+import { REST_AI_GenerateContentProxy } from "./proxies/REST-AI-GenerateContent";
 import { REST_AI_CompletionsProxy } from "./proxies/REST-AI-Completions";
-import { test_runtime_proxyProxy } from "./proxies/test-runtime-proxy";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,20 +73,14 @@ function startBungeeServer(portNum: number) {
   return Bun.serve({
     port: portNum,
     routes: {
-    "/converted-basic/*": test_converted_basic_apiProxy,
-    "/converted-basic": test_converted_basic_apiProxy,
-    "/v1/chat/completions/*": testlocalProxy,
-    "/v1/chat/completions": testlocalProxy,
-    "/v1/test-target/*": test_proxy_with_testsProxy,
-    "/v1/test-target": test_proxy_with_testsProxy,
-    "/sample/*": sample_proxyProxy,
-    "/sample": sample_proxyProxy,
-    "/test-feature-proxy/*": test_feature_proxyProxy,
-    "/test-feature-proxy": test_feature_proxyProxy,
-    "/v1/chat/completions/*": REST_AI_CompletionsProxy,
-    "/v1/chat/completions": REST_AI_CompletionsProxy,
-    "/test-runtime-endpoint/*": test_runtime_proxyProxy,
-    "/test-runtime-endpoint": test_runtime_proxyProxy,
+    "/v1/messages/*": REST_AI_MessagesProxy,
+    "/v1/messages": REST_AI_MessagesProxy,
+    "/v1beta/interactions/*": REST_AI_InteractionsProxy,
+    "/v1beta/interactions": REST_AI_InteractionsProxy,
+    "/v1/projects/*": REST_AI_GenerateContentProxy,
+    "/v1/projects": REST_AI_GenerateContentProxy,
+    "/v1/ai/completions/*": REST_AI_CompletionsProxy,
+    "/v1/ai/completions": REST_AI_CompletionsProxy,
     },
     async fetch(req) {
     if (req.method === "OPTIONS") {

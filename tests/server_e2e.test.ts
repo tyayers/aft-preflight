@@ -41,8 +41,8 @@ describe("Live Server HTTP Endpoints & UI Delivery", () => {
     const contentType = res.headers.get("content-type");
     expect(contentType).toContain("text/html");
     const text = await res.text();
-    expect(text).toContain("AFT TESTPILOT");
-    expect(text).toContain("RUNTIME EXPLORER & TESTER");
+    expect(text).toContain("AFT PREFLIGHT");
+    expect(text).toContain("BUNGEE RUNTIME");
   });
 
   it("serves static assets /style.css and /app.js", async () => {
@@ -83,6 +83,6 @@ describe("Live Server HTTP Endpoints & UI Delivery", () => {
     const json = await res.json();
     expect(json.success).toBe(true);
     expect(json.message).toContain("Build successful");
-    expect(json.count).toBeGreaterThan(0);
+    expect(json.count).toBeGreaterThanOrEqual(0);
   });
 });

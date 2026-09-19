@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# clean.sh - Clean & Rebuild Script for AFT-Testpilot
+# clean.sh - Clean & Rebuild Script for AFT-Preflight & Bungee Runtime
 # ==============================================================================
 #
 # DESCRIPTION:
@@ -43,37 +43,11 @@ if [[ "$1" == "--keep-deployments" || "$1" == "--preserve-deployments" || "$1" =
 fi
 
 echo "=================================================="
-echo "🧹  AFT-Testpilot Cleaner & Rebuilder"
+echo "🧹  AFT-Preflight & Bungee Runtime Cleaner & Rebuilder"
 echo "=================================================="
 
-# 1. Clean proxies directory (*.ts, *.js)
-if [ -d "proxies" ]; then
-  echo "🗑️  Cleaning compiled proxies in proxies/..."
-  rm -f proxies/*.ts proxies/*.js 2>/dev/null || true
-fi
-
-# 2. Clean extracted data YAML files
-echo "🗑️  Cleaning extracted YAMLs in data/..."
-rm -f data/proxies/*.yaml data/proxies/*.yml 2>/dev/null || true
-rm -f data/products/*.yaml data/products/*.yml 2>/dev/null || true
-rm -f data/users/*.yaml data/users/*.yml 2>/dev/null || true
-rm -f data/kvm/*.yaml data/kvm/*.yml data/kvm/*.json 2>/dev/null || true
-rm -f data/templates/*.yaml data/templates/*.yml 2>/dev/null || true
-rm -f data/tests/*.yaml data/tests/*.yml 2>/dev/null || true
-
-# 3. Clean deployments (default behavior: wipe all deployments unless --keep-deployments is set)
-if [ "$KEEP_DEPLOYMENTS" = false ]; then
-  echo "🗑️  Cleaning data/deployments/ (default: --all)..."
-  rm -f data/deployments/*.yaml data/deployments/*.yml 2>/dev/null || true
-else
-  echo "📦  Preserving data/deployments/ (--keep-deployments set)..."
-fi
-
-# 4. Run build.ts to generate clean index.ts
-echo ""
-echo "🚀  Rebuilding clean index.ts via bun run build.ts..."
-echo "=================================================="
-bun run build.ts
+# Delegate to clear.ts
+bun run clear.ts "$@"
 
 echo ""
 echo "✨  Clean and rebuild completed successfully!"

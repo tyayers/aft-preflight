@@ -8,15 +8,13 @@ import { runBuild } from "../build";
 describe("Bungee Runtime Single Environment & Web App Suite", () => {
   beforeAll(async () => {
     await DataManager.initialize();
-    await runBuild();
-  });
+  }, 15000);
 
   afterAll(async () => {
     // Cleanup any temporary files created during testing
     DataManager.deleteDataFile("proxies", "test-single-env-proxy.yaml");
     DataManager.deleteDataFile("deployments", "test-single-env-deployment.yaml");
-    await runBuild();
-  });
+  }, 15000);
 
   it("verifies top-level data directories and summary", () => {
     const summary = DataManager.getDataSummary();
@@ -106,32 +104,38 @@ proxies:
     DataManager.deleteDataFile("deployments", "test-single-env-deployment.yaml");
   });
 
-  it("verifies public/ static assets exist and are valid for AFT TESTPILOT Runtime Explorer & Tester", async () => {
+  it("verifies public/ static assets exist and are valid for AFT PREFLIGHT Runtime Explorer & Tester", async () => {
     expect(fs.existsSync("./public/index.html")).toBe(true);
     expect(fs.existsSync("./public/style.css")).toBe(true);
     expect(fs.existsSync("./public/app.js")).toBe(true);
 
     const html = fs.readFileSync("./public/index.html", "utf8");
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("AFT TESTPILOT");
-    expect(html).toContain("RUNTIME EXPLORER & TESTER");
+    expect(html).toContain("AFT PREFLIGHT");
+    expect(html).toContain("BUNGEE RUNTIME");
     expect(html).toContain("Test Console");
-    expect(html).toContain("Live Traces");
+    expect(html).toContain("Traces");
     // Verify envModal is removed
     expect(html).not.toContain('id="envModal"');
     expect(html).not.toContain('id="envSelectorBtn"');
+    expect(html).toContain('id="sidebarToggleBtn"');
+    expect(html).toContain('id="sidebarBackdrop"');
 
     const css = fs.readFileSync("./public/style.css", "utf8");
     expect(css).toContain("--bg-app");
     expect(css).toContain("[data-theme=\"dark\"]");
     expect(css).toContain(".sidebar-nav");
     expect(css).toContain(".tester-container");
+    expect(css).toContain(".sidebar-toggle-btn");
+    expect(css).toContain("display: none !important");
+    expect(css).toContain("@media (max-width: 850px)");
 
     const js = fs.readFileSync("./public/app.js", "utf8");
     expect(js).toContain("executeTestRequest");
     expect(js).toContain("renderTraceWaterfall");
     expect(js).toContain("loadRuntimeData");
     expect(js).toContain("exportTrace");
+    expect(js).toContain("toggleSidebar");
     expect(js).not.toContain("generateRandomEnvName");
     expect(js).not.toContain("loadEnvironment");
   });

@@ -1,4 +1,4 @@
-name: test.local
+name: REST-AI-Completions
 displayName: ""
 type: proxy
 gateway: apigee
@@ -10,13 +10,14 @@ parameters:
   - name: SimpleModel
     default: google/gemini-3.5-flash-lite
   - name: MediumModel
-    default: google/gemini-3.7-flash
+    default: google/gemini-3.8-flash
   - name: ComplexModel
-    default: google/gemini-3.7-flash
+    default: google/gemini-3.8-flash
   - name: ThinkingModel
-    default: google/gemini-3.7-flash
+    default: anthropic/claude-opus-5
   - name: ModelRouting
-    default: "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud"
+    default: "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=\
+      googlecloud"
   - name: ModelMapping
     default: gemini-flash-latest=gemini-3.7-flash,gemini-2.5-flash=gemini-3.7-flash
 endpoints:
@@ -33,6 +34,7 @@ endpoints:
         condition: target.route = "googlecloud-project"
         target: googlecloud-projects
       - name: default
+        target: default
     flows:
       - name: PreFlow
         mode: Request
@@ -41,22 +43,26 @@ endpoints:
           - name: KVM-LoadConfig
           - name: AM-SetVariables
           - name: JS-CheckModel
+          - name: AM-SetGoogleToken
+            condition: ai.model JavaRegex "^smart-.*" AND request.header.Authorization ==
+              null
           - name: SC-ModelJudge
             condition: ai.model JavaRegex "^smart-.*"
           - name: JS-EvaluateSmartModel
             condition: ai.model JavaRegex "^smart-.*"
           - name: JS-TransformPayload
-          - name: JS-ProcessGroupForApp
-            condition: request.header.x-ai-key == null AND request.header.x-ai-group != null
-          - name: SC-GetDeveloperApps
-            condition: request.header.x-ai-key == null AND request.header.x-ai-group != null
-              AND ai.developerEmail != null
-          - name: JS-ParseDeveloperAppKey
-            condition: request.header.x-ai-key == null AND developerAppsResponse.content !=
-              null
           - name: VA-VerifyKey
-            condition: token.type != "google"
           - name: AM-RemoveKey
+          - name: JS-ValidateRequest
+            condition: proxy.pathsuffix != "/models" AND proxy.pathsuffix != "/v1/models"
+          - name: LTQ-QuotaEnforce
+            condition: ai.modelTokenLimit != null
+      - name: PostFlow
+        mode: Response
+        steps:
+          - name: LTQ-QuotaCount
+            condition: verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null
+              AND ai.totalTokenCount != null
     faultRules: []
     defaultFaultRule:
       name: default-fault
@@ -64,7 +70,49 @@ endpoints:
         - name: AM-Unauthorized
           condition: fault.name == "InvalidApiKey" OR fault.name ==
             "FailedToResolveAPIKey"
+        - name: AM-ModelNotAllowed
+          condition: fault.name == "ScriptExecutionFailed"
+        - name: AM-QuotaExhaustion
+          condition: fault.name == "LLMTokenQuotaViolation"
 targets:
+  - name: anthropic
+    url: https://api.anthropic.com
+    flows:
+      - name: PostFlow
+        mode: Response
+        steps:
+          - name: JS-Analytics
+            condition: response.content != ""
+          - name: DC-TokenAnalytics
+            condition: ai.usageDataFound = "true"
+          - name: JS-ResetUsageDataFound
+            condition: ai.usageDataFound = "true"
+      - name: PreFlow
+        mode: Request
+        steps:
+          - name: JS-SetModifiedPrompt
+            condition: user.inputChanged = "true"
+      - name: EventFlow
+        mode: Response
+        steps:
+          - name: JS-Analytics
+          - name: DC-TokenAnalytics
+            condition: ai.usageDataFound = "true"
+          - name: JS-ResetUsageDataFound
+            condition: ai.usageDataFound = "true"
+          - name: LTQ-QuotaCount
+            condition: verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null
+              AND ai.totalTokenCount != null
+    faultRules: []
+    defaultFaultRule:
+      name: default-fault
+      steps:
+        - name: AM-SetGoogleToken
+        - name: SC-Failover-GoogleCloud-OAI
+        - name: JS-SetFailoverResponse
+        - name: JS-Analytics
+        - name: DC-TokenAnalytics
+          condition: ai.usageDataFound = "true"
   - name: googlecloud-projects
     url: https://aiplatform.googleapis.com/v1/projects
     flows:
@@ -73,6 +121,8 @@ targets:
         steps:
           - name: AM-SetGoogleToken
             condition: request.header.Authorization == null
+          - name: JS-SetModifiedPrompt
+            condition: user.inputChanged = "true"
       - name: PostFlow
         mode: Response
         steps:
@@ -90,10 +140,14 @@ targets:
             condition: ai.usageDataFound = "true"
           - name: JS-ResetUsageDataFound
             condition: ai.usageDataFound = "true"
+          - name: LTQ-QuotaCount
+            condition: verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null
+              AND ai.totalTokenCount != null
     faultRules: []
     defaultFaultRule:
       name: default-fault
       steps:
+        - name: AM-SetGoogleToken
         - name: SC-Failover-GoogleCloud-OAI
         - name: JS-SetFailoverResponse
         - name: JS-Analytics
@@ -107,6 +161,8 @@ targets:
         steps:
           - name: AM-SetGoogleToken
             condition: request.header.Authorization == null
+          - name: JS-SetModifiedPrompt
+            condition: user.inputChanged = "true"
       - name: PostFlow
         mode: Response
         steps:
@@ -124,10 +180,14 @@ targets:
             condition: ai.usageDataFound = "true"
           - name: JS-ResetUsageDataFound
             condition: ai.usageDataFound = "true"
+          - name: LTQ-QuotaCount
+            condition: verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null
+              AND ai.totalTokenCount != null
     faultRules: []
     defaultFaultRule:
       name: default-fault
       steps:
+        - name: AM-SetGoogleToken
         - name: SC-Failover-GoogleCloud-OAI
         - name: JS-SetFailoverResponse
         - name: JS-Analytics
@@ -141,6 +201,8 @@ targets:
         steps:
           - name: AM-SetGoogleToken
             condition: request.header.Authorization == null
+          - name: JS-SetModifiedPrompt
+            condition: user.inputChanged = "true"
       - name: PostFlow
         mode: Response
         steps:
@@ -158,10 +220,14 @@ targets:
             condition: ai.usageDataFound = "true"
           - name: JS-ResetUsageDataFound
             condition: ai.usageDataFound = "true"
+          - name: LTQ-QuotaCount
+            condition: verifyapikey.VA-VerifyKey.apiproduct.developer.llmQuota.limit != null
+              AND ai.totalTokenCount != null
     faultRules: []
     defaultFaultRule:
       name: default-fault
       steps:
+        - name: AM-SetGoogleToken
         - name: SC-Failover-GoogleCloud-OAI
         - name: JS-SetFailoverResponse
         - name: JS-Analytics
@@ -198,11 +264,6 @@ policies:
               Scopes:
                 Scope: https://www.googleapis.com/auth/cloud-platform
         IgnoreUnresolvedVariables: "true"
-        AssignTo:
-          metadata:
-            createNew: "false"
-            transport: http
-            type: request
   - name: KVM-LoadConfig
     type: KeyValueMapOperations
     content:
@@ -267,7 +328,7 @@ policies:
         DisplayName: JS-CheckModel
         Properties: {}
         Source: |
-
+          
           var aiKey = context.getVariable("request.header.x-ai-key");
           var apiKey = context.getVariable("request.header.x-api-key");
           if (!aiKey && apiKey) {
@@ -383,8 +444,8 @@ policies:
           }
 
           var modelRouting = context.getVariable("propertyset.ai.ModelRouting") || context.getVariable("propertyset.ModelRouting") || "";
-          if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
-            modelRouting = "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud";
+          if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
+            modelRouting = "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud";
             if (modelRouting === "{" + "ModelRouting}" || modelRouting.indexOf("=") === -1) {
               modelRouting = "";
             }
@@ -449,6 +510,9 @@ policies:
           } else if (effectiveProvider === "google") {
             if (reqInfo.requestType === "embeddings") {
               context.setVariable("ai.method", "embedContent");
+            } else if (reqInfo.requestType === "image-generation") {
+              var m = (cleanModel || "").toLowerCase();
+              context.setVariable("ai.method", m.indexOf("imagen") !== -1 ? "predict" : "generateContent");
             } else if (reqInfo.isStreaming) {
               context.setVariable("ai.method", "streamGenerateContent");
             } else {
@@ -460,13 +524,13 @@ policies:
 
           if (reqInfo.input) {
             context.setVariable("ai.requestPrompt", reqInfo.input);
+            context.setVariable("user.input", reqInfo.input);
           } else {
             print("Could not find user input/prompt!");
           }
 
           var googleCloudProject = context.getVariable("organization.name");
-          var newProject = context.getVariable("request.header.x-project");
-          context.setVariable("ai.googleCloudProject", newProject || googleCloudProject);
+          context.setVariable("ai.googleCloudProject", googleCloudProject);
         IncludeURL: jsc://ai-functions.js
   - name: SC-ModelJudge
     type: ServiceCallout
@@ -486,13 +550,18 @@ policies:
           Set:
             Verb: POST
             Headers:
-              Header:
-                - Name: Content-Type
+              - Header:
+                  metadata:
+                    name: Content-Type
                   _text: application/json
+              - Header:
+                  metadata:
+                    name: Authorization
+                  _text: "{request.header.authorization}"
             Payload:
               metadata:
                 contentType: application/json
-              _text: |
+              _text: >
                 {
                   "contents": [
                     {
@@ -509,10 +578,6 @@ policies:
         HTTPTargetConnection:
           Properties: {}
           URL: https://aiplatform.googleapis.com/v1/projects/{organization.name}/locations/global/publishers/google/models/gemini-3.5-flash-lite:generateContent
-          Authentication:
-            GoogleAccessToken:
-              Scopes:
-                Scope: https://www.googleapis.com/auth/cloud-platform
   - name: JS-EvaluateSmartModel
     type: Javascript
     content:
@@ -525,7 +590,6 @@ policies:
         DisplayName: JS-EvaluateSmartModel
         Properties: {}
         Source: |
-
           var evalContent = context.getVariable("evaluationResponse.content");
           var judgeResult = "";
 
@@ -546,18 +610,18 @@ policies:
           }
 
           var result = judgeResult.toUpperCase().trim();
-          var selectedModel = "google/gemini-3.7-flash";
+          var selectedModel = "google/gemini-3.8-flash";
 
           if (result.indexOf("SIMPLE") !== -1) {
             selectedModel = "google/gemini-3.5-flash-lite";
           } else if (result.indexOf("COMPLEX") !== -1) {
-            selectedModel = "google/gemini-3.7-flash";
+            selectedModel = "google/gemini-3.8-flash";
           } else if (result.indexOf("REASONING") !== -1 || result.indexOf("THINKING") !== -1) {
-            selectedModel = "google/gemini-3.7-flash";
+            selectedModel = "anthropic/claude-opus-5";
           } else if (result.indexOf("MEDIUM") !== -1) {
-            selectedModel = "google/gemini-3.7-flash";
+            selectedModel = "google/gemini-3.8-flash";
           } else {
-            selectedModel = "google/gemini-3.7-flash";
+            selectedModel = "google/gemini-3.8-flash";
           }
 
           var currentModel = selectedModel;
@@ -641,8 +705,8 @@ policies:
           }
 
           var modelRouting = context.getVariable("propertyset.ai.ModelRouting") || context.getVariable("propertyset.ModelRouting") || "";
-          if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
-            modelRouting = "'google/*'=googlecloud-oai,'anthropic/*'=googlecloud";
+          if (!modelRouting || modelRouting === "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud" || modelRouting.indexOf("=") === -1) {
+            modelRouting = "'google/*'=googlecloud-oai,'zai-org/*=googlecloud-oai','anthropic/*'=googlecloud";
             if (modelRouting === "{" + "ModelRouting}" || modelRouting.indexOf("=") === -1) {
               modelRouting = "";
             }
@@ -701,6 +765,9 @@ policies:
           } else if (provider === "google") {
             if (requestType === "embeddings") {
               context.setVariable("ai.method", "embedContent");
+            } else if (requestType === "image-generation") {
+              var m = (context.getVariable("ai.model") || "").toLowerCase();
+              context.setVariable("ai.method", m.indexOf("imagen") !== -1 ? "predict" : "generateContent");
             } else if (isStreaming) {
               context.setVariable("ai.method", "streamGenerateContent");
             } else {
@@ -719,21 +786,35 @@ policies:
           name: JS-TransformPayload
         DisplayName: JS-TransformPayload
         Properties: {}
-        Source: |
-
+        Source: >
+          
           var protocol = context.getVariable("ai.protocol") || "unknown";
-          var effectiveProvider = context.getVariable("ai.provider") || "unknown";
-          var targetRoute = context.getVariable("target.route") || context.getVariable("ai.targetRoute") || "";
-          var rawBody = context.getVariable("request.content") || request.content;
-          var contentType = context.getVariable("request.header.Content-Type") || "";
+
+          var effectiveProvider = context.getVariable("ai.provider") ||
+          "unknown";
+
+          var targetRoute = context.getVariable("target.route") ||
+          context.getVariable("ai.targetRoute") || "";
+
+          var rawBody = context.getVariable("request.content") ||
+          request.content;
+
+          var contentType = context.getVariable("request.header.Content-Type")
+          || "";
+
           var requestType = context.getVariable("ai.type") || "text";
+
           var cleanModelName = context.getVariable("ai.model") || "";
+
           var formModel = context.getVariable("request.formparam.model");
 
+
           var requestContent = null;
+
           try {
             requestContent = request.content.asJSON;
           } catch (e) {}
+
 
           if (!requestContent && rawBody) {
             if (typeof rawBody === "object") {
@@ -745,12 +826,17 @@ policies:
             }
           }
 
+
           var payloadModel = cleanModelName;
-          if (targetRoute === "googlecloud-oai" && payloadModel.indexOf("/") === -1 && effectiveProvider && effectiveProvider !== "unknown") {
+
+          if (targetRoute === "googlecloud-oai" && payloadModel.indexOf("/") ===
+          -1 && effectiveProvider && effectiveProvider !== "unknown") {
             payloadModel = effectiveProvider + "/" + payloadModel;
           }
 
-          if (protocol === "openai" && effectiveProvider !== "openai" && targetRoute !== "openai") {
+
+          if (protocol === "openai" && effectiveProvider !== "openai" &&
+          targetRoute !== "openai") {
             var reqInfo = {
               protocol: protocol,
               provider: effectiveProvider,
@@ -780,20 +866,25 @@ policies:
             if (requestContent && typeof requestContent === "object" && requestContent["model"]) {
               requestContent["model"] = payloadModel;
             }
-          } else if (requestContent && typeof requestContent === "object" && requestContent["model"]) {
+          } else if (requestContent && typeof requestContent === "object" &&
+          requestContent["model"]) {
             requestContent["model"] = payloadModel;
           }
 
-          if (effectiveProvider === "anthropic" && (targetRoute === "googlecloud" || targetRoute.indexOf("google") !== -1)) {
+
+          if (effectiveProvider === "anthropic" && (targetRoute ===
+          "googlecloud" || targetRoute.indexOf("google") !== -1)) {
             if (requestContent && typeof requestContent === "object") {
               requestContent["anthropic_version"] = "vertex-2023-10-16";
               delete requestContent.model;
             }
           }
 
+
           if (requestContent && typeof requestContent === "object") {
             request.content = JSON.stringify(requestContent);
           }
+
 
           if (context.getVariable("request.header.x-debug") === "true") {
             print("ai.Model: " + cleanModelName);
@@ -803,97 +894,6 @@ policies:
             print("target.route: " + context.getVariable("target.route"));
           }
         IncludeURL: jsc://ai-functions.js
-  - name: JS-ProcessGroupForApp
-    type: Javascript
-    content:
-      Javascript:
-        metadata:
-          continueOnError: "true"
-          enabled: "true"
-          timeLimit: "200"
-          name: JS-ProcessGroupForApp
-        DisplayName: JS-ProcessGroupForApp
-        Properties: {}
-        Source: |
-          var groupHeader = context.getVariable("request.header.x-ai-group");
-          if (groupHeader) {
-            var groupParts = groupHeader.split(":");
-            var developerEmail = groupParts[0].trim();
-            var appTargetName = (groupParts.length > 1) ? groupParts[1].trim() : null;
-
-            context.setVariable("ai.developerEmail", developerEmail);
-            if (appTargetName) {
-              context.setVariable("ai.appTargetName", appTargetName);
-            }
-          }
-  - name: SC-GetDeveloperApps
-    type: ServiceCallout
-    content:
-      ServiceCallout:
-        metadata:
-          continueOnError: "true"
-          enabled: "true"
-          name: SC-GetDeveloperApps
-        DisplayName: SC-GetDeveloperApps
-        Properties: {}
-        Request:
-          variable: developerAppsRequest
-          IgnoreUnresolvedVariables: "true"
-        Response: developerAppsResponse
-        HTTPTargetConnection:
-          Properties: {}
-          URL: https://apigee.googleapis.com/v1/organizations/{organization.name}/developers/{ai.developerEmail}/apps?expand=true
-          Authentication:
-            GoogleAccessToken:
-              Scopes:
-                Scope: https://www.googleapis.com/auth/cloud-platform
-  - name: JS-ParseDeveloperAppKey
-    type: Javascript
-    content:
-      Javascript:
-        metadata:
-          continueOnError: "true"
-          enabled: "true"
-          timeLimit: "200"
-          name: JS-ParseDeveloperAppKey
-        DisplayName: JS-ParseDeveloperAppKey
-        Properties: {}
-        Source: |
-          var responseContent = context.getVariable("developerAppsResponse.content");
-          if (responseContent) {
-            try {
-              var appsData = JSON.parse(responseContent);
-              var appList = appsData.app || appsData.developerApp || appsData;
-              if (Array.isArray(appList) && appList.length > 0) {
-                var targetAppName = context.getVariable("ai.appTargetName");
-                var selectedApp = null;
-
-                if (targetAppName) {
-                  for (var i = 0; i < appList.length; i++) {
-                    if (appList[i].name === targetAppName) {
-                      selectedApp = appList[i];
-                      break;
-                    }
-                  }
-                }
-
-                if (!selectedApp) {
-                  selectedApp = appList[0];
-                }
-
-                if (selectedApp && selectedApp.credentials && selectedApp.credentials.length > 0) {
-                  var firstCred = selectedApp.credentials[0];
-                  var clientId = firstCred.consumerKey || firstCred.clientId || firstCred.key;
-                  if (clientId) {
-                    context.setVariable("request.header.x-ai-key", clientId);
-                    print("Successfully resolved x-ai-key from developer app " + selectedApp.name + ": " + clientId);
-                  }
-                }
-              }
-            } catch (e) {
-              print("Failed to parse developer apps response: " + e);
-            }
-          }
   - name: AM-Unauthorized
     type: AssignMessage
     content:
@@ -968,15 +968,20 @@ policies:
           Set:
             Verb: POST
             Headers:
-              Header:
-                - Name: Content-Type
+              - Header:
+                  metadata:
+                    name: Content-Type
                   _text: application/json
+              - Header:
+                  metadata:
+                    name: Authorization
+                  _text: "{response.header.authorization}"
             Payload:
               metadata:
                 contentType: application/json
               _text: |
                 {
-                  "model": "google/gemini-3.7-flash",
+                  "model": "google/gemini-3.8-flash",
                   "messages": [
                     {
                       "role": "user",
@@ -988,11 +993,7 @@ policies:
         Response: failoverResponse
         HTTPTargetConnection:
           Properties: {}
-          URL: https://aiplatform.googleapis.com/v1/projects/{ai.googleCloudProject}/locations/global/endpoints/openapi/chat/completions
-          Authentication:
-            GoogleAccessToken:
-              Scopes:
-                Scope: https://www.googleapis.com/auth/cloud-platform
+          URL: https://aiplatform.googleapis.com/v1/projects/{organization.name}/locations/global/endpoints/openapi/chat/completions
   - name: JS-SetFailoverResponse
     type: Javascript
     content:
@@ -1004,9 +1005,12 @@ policies:
           name: JS-SetFailoverResponse
         DisplayName: JS-SetFailoverResponse
         Properties: {}
-        Source: |
+        Source: >
           var failoverContent = context.getVariable("failoverResponse.content");
-          var failoverStatusCode = context.getVariable("failoverResponse.status.code");
+
+          var failoverStatusCode =
+          context.getVariable("failoverResponse.status.code");
+
 
           if (failoverContent) {
             response.content = failoverContent;
@@ -1028,6 +1032,44 @@ policies:
             context.setVariable("message.status.code", 502);
             context.setVariable("response.header.Content-Type", "application/json");
           }
+  - name: JS-SetModifiedPrompt
+    type: Javascript
+    content:
+      Javascript:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          timeLimit: "200"
+          name: JS-SetModifiedPrompt
+        DisplayName: JS-SetModifiedPrompt
+        Properties: {}
+        Source: >
+          var inputChanged = context.getVariable("user.inputChanged");
+
+          if (inputChanged === "true" || inputChanged === true) {
+            var userInput = context.getVariable("user.input");
+            if (userInput) {
+              var rawBody = context.getVariable("request.content") || request.content;
+              var requestContent = null;
+              try {
+                requestContent = request.content.asJSON;
+              } catch (e) {}
+              if (!requestContent && rawBody) {
+                try {
+                  requestContent = (typeof rawBody === "object") ? rawBody : JSON.parse(rawBody);
+                } catch (e) {}
+              }
+              if (requestContent) {
+                var updatedContent = setPrompt(requestContent, userInput);
+                var updatedString = JSON.stringify(updatedContent);
+                context.setVariable("request.content", updatedString);
+                try {
+                  request.content = updatedString;
+                } catch (e) {}
+              }
+            }
+          }
+        IncludeURL: jsc://ai-functions.js
   - name: JS-Analytics
     type: Javascript
     content:
@@ -1039,8 +1081,8 @@ policies:
           name: JS-Analytics
         DisplayName: JS-Analytics
         Properties: {}
-        Source: |
-
+        Source: >
+          
           function safeJsonParse(str) {
             if (!str) return null;
             if (typeof str === "object") return str;
@@ -1059,9 +1101,13 @@ policies:
             }
           }
 
+
           var currentFlow = context.getVariable("current.flow.name");
+
           var contentString = null;
+
           var type = "non-streaming";
+
 
           if (currentFlow === "EventFlow") {
             contentString = context.getVariable("response.event.current.content");
@@ -1071,24 +1117,35 @@ policies:
             type = "non-streaming";
           }
 
+
           if (!contentString) {
             contentString = context.getVariable("response.content") || context.getVariable("response.event.current.content");
           }
 
+
           var rawPrices = context.getVariable("ai.prices");
+
           var prices = safeJsonParse(rawPrices);
+
           if (!prices) {
             prices = {
               "default": { "requestPerMillionTokens": 1, "responsePerMillionTokens": 3 }
             };
           }
+
           context.setVariable("ai.responseType", type);
+
           var modelName = context.getVariable("ai.model");
+
           var aiProtocol = context.getVariable("ai.protocol");
+
           var aiProvider = context.getVariable("ai.provider");
+
           var reqType = context.getVariable("ai.type");
 
+
           var usageData = null;
+
 
           if (aiProtocol === "openai" && aiProvider === "anthropic") {
             if (type === "streaming" && contentString) {
@@ -1106,14 +1163,17 @@ policies:
               context.setVariable("response.content", contentString);
               usageData = nonStreamResult.usageData;
             }
-          } else if (reqType === "audio-text" && aiProvider === "google" && aiProtocol === "openai" && contentString) {
+          } else if (reqType === "audio-text" && aiProvider === "google" &&
+          aiProtocol === "openai" && contentString) {
             var audioResult = convertGeminiAudioToOpenAi(contentString);
             if (audioResult && audioResult.base64Data) {
               var rawBytes = decodeBase64ToBytes(audioResult.base64Data);
               context.setVariable("response.header.Content-Type", audioResult.mimeType || "audio/mpeg");
               context.setVariable("response.content", rawBytes);
             }
-          } else if (reqType === "image-generation" && (aiProvider === "google" || aiProvider === "gemini") && aiProtocol === "openai" && contentString) {
+          } else if (reqType === "image-generation" && (aiProvider === "google"
+          || aiProvider === "gemini") && aiProtocol === "openai" &&
+          contentString) {
             var imageObj = null;
             try {
               imageObj = JSON.parse(contentString);
@@ -1123,7 +1183,9 @@ policies:
               contentString = JSON.stringify(openAiImageResp);
               context.setVariable("response.content", contentString);
             }
-          } else if (reqType === "embeddings" && (aiProvider === "google" || aiProvider === "gemini") && aiProtocol === "openai" && contentString) {
+          } else if (reqType === "embeddings" && (aiProvider === "google" ||
+          aiProvider === "gemini") && aiProtocol === "openai" && contentString)
+          {
             var embedObj = null;
             try {
               embedObj = JSON.parse(contentString);
@@ -1135,16 +1197,22 @@ policies:
             }
           }
 
+
           if (!usageData) {
             usageData = getUsageData(contentString);
           }
 
+
           if (usageData.model) context.setVariable("ai.model", usageData.model);
 
-          var existingReqTokenCount = context.getVariable("ai.requestTokenCount");
+
+          var existingReqTokenCount =
+          context.getVariable("ai.requestTokenCount");
+
           if (existingReqTokenCount && !usageData.requestTokenCount) {
             usageData.requestTokenCount = existingReqTokenCount;
           }
+
 
           if (usageData.usageFound) {
             context.setVariable("ai.usageDataFound", "true");
@@ -1268,11 +1336,134 @@ policies:
                 ref: ai.totalCost
                 default: "0"
             DataCollector: dc_ai_total_cost
+  - name: AM-ModelNotAllowed
+    type: AssignMessage
+    content:
+      AssignMessage:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          name: AM-ModelNotAllowed
+        DisplayName: AM-ModelNotAllowed
+        Properties: {}
+        Set:
+          StatusCode: "403"
+          Payload: Model not allowed.
+        IgnoreUnresolvedVariables: "true"
+        AssignTo:
+          metadata:
+            createNew: "false"
+            transport: http
+            type: request
+  - name: AM-QuotaExhaustion
+    type: AssignMessage
+    content:
+      AssignMessage:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          name: AM-QuotaExhaustion
+        DisplayName: AM-QuotaExhaustion
+        Properties: {}
+        Set:
+          StatusCode: "429"
+          Payload: Quota exhausted.
+        IgnoreUnresolvedVariables: "true"
+        AssignTo:
+          metadata:
+            createNew: "false"
+            transport: http
+            type: request
+  - name: JS-ValidateRequest
+    type: Javascript
+    content:
+      Javascript:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          timeLimit: "200"
+          name: JS-ValidateRequest
+        DisplayName: JS-ValidateRequest
+        Properties: {}
+        Source: "
+
+          var productContent =
+          context.getVariable(\"verifyapikey.VA-VerifyKey.apiproduct.developer.\
+          llmQuota.filteredConfigs\");
+
+          var model = context.getVariable(\"ai.model\");
+
+
+          if (!productContent || !productContent.includes(model)) {
+
+          \  throw \"MODEL_NOT_ALLOWED\";
+
+          }
+
+
+          var modelTokenLimit = getModelTokenLimit(model, productContent);
+
+          if (modelTokenLimit != -1) {
+
+          \  context.setVariable(\"ai.modelTokenLimit\", modelTokenLimit);
+
+          }
+
+          \  "
+        IncludeURL: jsc://ai-functions.js
+  - name: LTQ-QuotaCount
+    type: LLMTokenQuota
+    content:
+      LLMTokenQuota:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          name: LTQ-QuotaCount
+          type: calendar
+        DisplayName: LTQ-QuotaCount
+        Properties: {}
+        UseQuotaConfigInAPIProduct:
+          metadata:
+            stepName: VA-VerifyKey
+        CountOnly: "true"
+        SharedName: llm-quota
+        Distributed: "false"
+        Synchronous: "false"
+        StartTime: 2013-08-21 10:00:00
+        AsynchronousConfiguration:
+          SyncIntervalInSeconds: "20"
+          SyncMessageCount: "5"
+        LLMTokenUsageSource: "{ai.totalTokenCount}"
+        LLMModelSource: "{ai.model}"
+  - name: LTQ-QuotaEnforce
+    type: LLMTokenQuota
+    content:
+      LLMTokenQuota:
+        metadata:
+          continueOnError: "false"
+          enabled: "true"
+          name: LTQ-QuotaEnforce
+          type: calendar
+        DisplayName: LTQ-QuotaEnforce
+        Properties: {}
+        UseQuotaConfigInAPIProduct:
+          metadata:
+            stepName: VA-VerifyKey
+        EnforceOnly: "true"
+        SharedName: llm-quota
+        Distributed: "false"
+        Synchronous: "false"
+        StartTime: 2013-08-21 10:00:00
+        AsynchronousConfiguration:
+          SyncIntervalInSeconds: "20"
+          SyncMessageCount: "5"
+        LLMModelSource: "{ai.model}"
 resources:
   - name: openapi.yaml
     type: oas
-    content: |
+    content: >
       openapi: 3.0.0
+
       info:
         title: OpenAI Chat Completions API
         description: Basic request structure validation for OpenAI Chat Completions API.
@@ -1364,16 +1555,16 @@ resources:
   - name: ai.properties
     type: properties
     content: |
-      ModelRouting='google/*'=googlecloud-oai,'anthropic/*'=googlecloud
-      ModelMapping=gemini-flash-latest=gemini-3.7-flash,gemini-2.5-flash=gemini-3.7-flash
+      ModelRouting=true
   - name: ai-functions.js
     type: jsc
-    content: |
+    content: >
       function getBodyString(content) {
         if (content === null || content === undefined) return "";
         if (typeof content === "string") return content;
         return String(content);
       }
+
 
       function extractGoogleInput(contents) {
         if (!contents || !Array.isArray(contents)) return "";
@@ -1389,6 +1580,7 @@ resources:
         }
         return "";
       }
+
 
       function extractMessagesInput(messages) {
         if (!messages || !Array.isArray(messages)) return "";
@@ -1417,6 +1609,7 @@ resources:
         return "";
       }
 
+
       function encodeBytesToBase64(data) {
         if (!data) return "";
         try {
@@ -1436,6 +1629,7 @@ resources:
         return "";
       }
 
+
       function decodeBase64ToBytes(base64Str) {
         if (!base64Str) return "";
         try {
@@ -1451,6 +1645,7 @@ resources:
         return base64Str;
       }
 
+
       function getModelName(urlString, contentString) {
         if (typeof getRequestInfo === "undefined" && typeof require !== "undefined") {
           var reqInfoModule = require("./getRequestInfo");
@@ -1461,6 +1656,7 @@ resources:
         var infoObj = typeof getRequestInfo === "function" ? getRequestInfo(urlString, contentString) : { modelName: "unknown" };
         return infoObj.modelName;
       }
+
 
       function getPrompts(contentData) {
         if (typeof getRequestInfo === "undefined" && typeof require !== "undefined") {
@@ -1480,6 +1676,7 @@ resources:
           protocol: infoObj.protocol
         };
       }
+
 
       function getRequestInfo(urlString, content, contentType, routingConfig) {
         var info = {
@@ -1763,6 +1960,7 @@ resources:
         return info;
       }
 
+
       function getTargetRoute(modelName, routingConfig) {
         var info = getRequestInfo("", { model: modelName }, "", routingConfig);
         var result = {
@@ -1776,6 +1974,7 @@ resources:
         }
         return result;
       }
+
 
       function setPrompt(contentData, userPrompt) {
         if (!contentData) return contentData;
@@ -1827,6 +2026,7 @@ resources:
         return contentData;
       }
 
+
       function getResponse(contentData) {
         var responseText = "";
         if (!contentData) return responseText;
@@ -1874,6 +2074,7 @@ resources:
         return responseText;
       }
 
+
       function setResponse(contentData, content) {
         if (!contentData) return contentData;
 
@@ -1919,6 +2120,7 @@ resources:
 
         return contentData;
       }
+
 
       function getUsageData(contentString) {
         var usageData = {
@@ -2074,6 +2276,7 @@ resources:
         return usageData;
       }
 
+
       function testAllowedModels(requestInfo) {
         var result = true;
         if (!requestInfo) return result;
@@ -2098,6 +2301,7 @@ resources:
         }
         return result;
       }
+
 
       function testDeniedModels(requestInfo) {
         var result = true;
@@ -2125,6 +2329,7 @@ resources:
         }
         return result;
       }
+
 
       function convertOpenAiToGemini(openAiPayload) {
         if (!openAiPayload) return {};
@@ -2202,6 +2407,7 @@ resources:
         return geminiPayload;
       }
 
+
       function convertGeminiToOpenAi(geminiResponse, modelName) {
         if (!geminiResponse) return {};
 
@@ -2264,6 +2470,7 @@ resources:
         return openAiResponse;
       }
 
+
       function convertOpenAiToGeminiAudio(openAiPayload) {
         if (!openAiPayload) return {};
 
@@ -2319,6 +2526,7 @@ resources:
         };
       }
 
+
       function convertGeminiAudioToOpenAi(geminiResponse) {
         var responseData = geminiResponse;
         if (typeof geminiResponse === "string") {
@@ -2356,6 +2564,7 @@ resources:
           mimeType: mimeType
         };
       }
+
 
       function parseMultipartFormData(body, contentType) {
         var result = {
@@ -2432,6 +2641,7 @@ resources:
         return result;
       }
 
+
       function convertOpenAiMultipartToGemini(multipartData) {
         if (!multipartData) return {};
 
@@ -2467,6 +2677,7 @@ resources:
         };
       }
 
+
       function convertOpenAiToGeminiEmbeddings(openAiPayload) {
         if (!openAiPayload) return { content: { parts: [] } };
 
@@ -2487,6 +2698,7 @@ resources:
           }
         };
       }
+
 
       function convertGeminiEmbeddingsToOpenAi(geminiResponse, modelName) {
         if (!geminiResponse) return { object: "list", data: [], model: modelName || "gemini-embedding" };
@@ -2520,6 +2732,7 @@ resources:
         };
       }
 
+
       function convertOpenAiToImagen(openAiPayload) {
         if (!openAiPayload) return { instances: [] };
 
@@ -2542,6 +2755,7 @@ resources:
           parameters: parameters
         };
       }
+
 
       function convertOpenAiToGeminiImage(openAiPayload) {
         if (!openAiPayload) return { contents: [] };
@@ -2567,6 +2781,7 @@ resources:
           generationConfig: config
         };
       }
+
 
       function convertImagenToOpenAi(imagenResponse, modelName) {
         if (!imagenResponse) return { created: Math.floor(Date.now() / 1000), data: [] };
@@ -2610,6 +2825,7 @@ resources:
 
         return openAiResponse;
       }
+
 
       function convertOpenAiToAnthropic(openAiPayload, routeInfo) {
         if (!openAiPayload) return {};
@@ -2733,6 +2949,7 @@ resources:
         return anthropicPayload;
       }
 
+
       function convertAnthropicToOpenAi(anthropicData, modelName) {
         var usageData = {
           model: modelName || "",
@@ -2816,7 +3033,9 @@ resources:
         };
       }
 
-      function convertAnthropicStreamToOpenAi(contentString, modelName, streamMessageId) {
+
+      function convertAnthropicStreamToOpenAi(contentString, modelName,
+      streamMessageId) {
         var usageData = {
           model: modelName || "",
           requestTokenCount: 0,
@@ -3106,7 +3325,9 @@ resources:
         };
       }
 
-      function convertOpenAiPayload(openAiPayload, provider, requestType, routeInfo) {
+
+      function convertOpenAiPayload(openAiPayload, provider, requestType,
+      routeInfo) {
         if (!openAiPayload) return {};
 
         var prov = (provider || "").toLowerCase();
@@ -3139,6 +3360,7 @@ resources:
 
         return openAiPayload;
       }
+
 
       function getModelTokenLimit(modelName, quotaData) {
         var limit = -1;
@@ -3197,6 +3419,7 @@ resources:
         return limit;
       }
 
+
       function getModelList(quotaData) {
         var result = {
           object: "list",
@@ -3248,6 +3471,7 @@ resources:
 
         return result;
       }
+
 
       if (typeof exports !== "undefined") {
         exports.getRequestInfo = getRequestInfo;

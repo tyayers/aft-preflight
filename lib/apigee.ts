@@ -313,6 +313,7 @@ export class ApigeeContext {
       endTime: now,
       durationMs: 0,
       status: "SKIPPED",
+      variablesSnapshot: this.getTraceVariablesSnapshot(),
     });
   }
 
@@ -329,23 +330,82 @@ export class ApigeeContext {
     this.trace.target = { ...targetInfo };
   }
 
+  private _streamedChunks: string[] = [];
+
+  public appendStreamChunk(chunk: any): void {
+    if (chunk === undefined || chunk === null) return;
+    const str =
+      typeof chunk === "string"
+        ? chunk
+        : chunk instanceof Uint8Array || (typeof Buffer !== "undefined" && Buffer.isBuffer(chunk))
+        ? new TextDecoder().decode(chunk)
+        : String(chunk);
+    this._streamedChunks.push(str);
+    if (this.trace) {
+      if (!this.trace.response.body) {
+        this.trace.response.body = str;
+      } else if (this.trace.response.body.length < 500000) {
+        this.trace.response.body += str;
+      }
+    }
+  }
+
+  public finalizeStreamTrace(): void {
+    if (!this.trace) return;
+    if (this._streamedChunks.length > 0) {
+      const full = this._streamedChunks.join("");
+      this.trace.response.body = full.length > 500000 ? full.slice(0, 500000) + "... [truncated]" : full;
+    }
+    this.trace.clientSentTime = Date.now();
+    this.trace.durationMs = Math.max(0.1, this.trace.clientSentTime - this.trace.clientReceivedTime);
+    this.trace.proxyDurationMs = Math.max(0, Math.round((this.trace.durationMs - (this.trace.targetDurationMs || 0)) * 10) / 10);
+  }
+
   public finalizeTrace(): ExecutionTrace | null {
     if (!this.trace) return null;
     this.trace.clientSentTime = Date.now();
     this.trace.durationMs = Math.max(0.1, this.trace.clientSentTime - this.trace.clientReceivedTime);
+    this.trace.targetDurationMs = this.trace.target?.durationMs || 0;
+    this.trace.proxyDurationMs = Math.max(0, Math.round((this.trace.durationMs - this.trace.targetDurationMs) * 10) / 10);
     this.trace.response.status = this.response.status;
     this.trace.response.statusText = this.response.statusText;
     this.trace.response.headers = { ...this.response.headers };
 
-    if (typeof this.response.content === "string") {
-      this.trace.response.body = this.response.content.length > 10000
-        ? this.response.content.slice(0, 10000) + "... [truncated]"
-        : this.response.content;
+    if (this.request.headers) {
+      this.trace.request.headers = { ...this.trace.request.headers, ...this.request.headers };
     }
-    if (typeof this.request.content === "string") {
-      this.trace.request.body = this.request.content.length > 10000
-        ? this.request.content.slice(0, 10000) + "... [truncated]"
-        : this.request.content;
+
+    const formatPayload = (c: any): string | undefined => {
+      if (c === null || c === undefined || c === "") return undefined;
+      if (typeof c === "string") {
+        return c.length > 500000 ? c.slice(0, 500000) + "... [truncated]" : c;
+      }
+      if (c instanceof Uint8Array || c instanceof ArrayBuffer) {
+        try {
+          const decoded = new TextDecoder().decode(c);
+          return decoded.length > 500000 ? decoded.slice(0, 500000) + "... [truncated]" : decoded;
+        } catch {
+          return `[Binary data: ${c.byteLength || (c as any).length} bytes]`;
+        }
+      }
+      try {
+        const jsonStr = JSON.stringify(c, null, 2);
+        return jsonStr.length > 500000 ? jsonStr.slice(0, 500000) + "... [truncated]" : jsonStr;
+      } catch {
+        return String(c);
+      }
+    };
+
+    const respBody = formatPayload(this.response.rawContent ?? this.response.content) ?? formatPayload(this.variables["response.content"]);
+    if (respBody !== undefined) {
+      this.trace.response.body = respBody;
+    } else if (this._streamedChunks.length > 0 && !this.trace.response.body) {
+      this.trace.response.body = this._streamedChunks.join("");
+    }
+
+    const reqBody = formatPayload(this.request.rawContent ?? this.request.content) ?? formatPayload(this.variables["request.content"]);
+    if (reqBody !== undefined) {
+      this.trace.request.body = reqBody;
     }
 
     if (this.fault) {
@@ -364,25 +424,26 @@ export class ApigeeContext {
 
   private getTraceVariablesSnapshot(): Record<string, any> {
     const snapshot: Record<string, any> = {};
-    const keys = [
-      "request.verb",
-      "request.path",
-      "target.url",
-      "target.route",
-      "response.status.code",
-      "ai.model",
-      "ai.rawModelName",
-      "ai.provider",
-      "ai.targetRoute",
-      "verifyapikey.VA-VerifyKey.apiproduct.name",
-      "verifyapikey.VA-VerifyKey.developer.app.name",
-      "verifyapikey.VA-VerifyKey.developer.email",
-      "fault.name",
-    ];
 
-    for (const k of keys) {
-      if (this.variables[k] !== undefined) {
-        snapshot[k] = this.variables[k];
+    // Standard request/response context
+    if (this.request.method) snapshot["request.verb"] = this.request.method;
+    if (this.request.path) snapshot["request.path"] = this.request.path;
+    if (this.request.url) snapshot["request.url"] = this.request.url;
+    if (this.response.status) snapshot["response.status.code"] = this.response.status;
+
+    // Capture ALL variables currently in the context
+    for (const [k, v] of Object.entries(this.variables)) {
+      if (v === undefined) continue;
+      if (v instanceof ArrayBuffer || (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(v))) {
+        snapshot[k] = "[binary data]";
+      } else if (typeof v === "object" && v !== null) {
+        try {
+          snapshot[k] = JSON.parse(JSON.stringify(v));
+        } catch {
+          snapshot[k] = String(v);
+        }
+      } else {
+        snapshot[k] = v;
       }
     }
     return snapshot;

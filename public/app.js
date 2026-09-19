@@ -1,5 +1,5 @@
 /**
- * AFT TESTPILOT — Runtime Explorer & Tester
+ * AFT PREFLIGHT — Bungee Runtime Explorer & Tester
  * Pure vanilla JavaScript frontend for inspecting runtime state and running endpoint tests with trace profiling.
  */
 
@@ -29,6 +29,9 @@
   // DOM Elements
   const el = {
     themeToggleBtn: document.getElementById('themeToggleBtn'),
+    sidebarToggleBtn: document.getElementById('sidebarToggleBtn'),
+    sidebarBackdrop: document.getElementById('sidebarBackdrop'),
+    sidebarNav: document.getElementById('sidebarNav'),
     hStatProxies: document.getElementById('hStatProxies'),
     hStatProducts: document.getElementById('hStatProducts'),
     hStatUsers: document.getElementById('hStatUsers'),
@@ -45,6 +48,7 @@
     itemTypeBadge: document.getElementById('itemTypeBadge'),
     itemSubpath: document.getElementById('itemSubpath'),
     itemTitleDisplay: document.getElementById('itemTitleDisplay'),
+    headerProxyUrls: document.getElementById('headerProxyUrls'),
     mainTabControl: document.getElementById('mainTabControl'),
     tabBtnOverview: document.getElementById('tabBtnOverview'),
     tabBtnYaml: document.getElementById('tabBtnYaml'),
@@ -107,10 +111,17 @@
     assertionsCardWrapper: document.getElementById('assertionsCardWrapper'),
     assertionsEmptyNotice: document.getElementById('assertionsEmptyNotice'),
     assertionsList: document.getElementById('assertionsList'),
+    resStatusCard: document.getElementById('resStatusCard'),
     resStatusBadge: document.getElementById('resStatusBadge'),
+    resDurationCard: document.getElementById('resDurationCard'),
     resDurationPill: document.getElementById('resDurationPill'),
+    resSizeCard: document.getElementById('resSizeCard'),
     resSizePill: document.getElementById('resSizePill'),
+    resStreamCard: document.getElementById('resStreamCard'),
     resStreamPill: document.getElementById('resStreamPill'),
+    resAssertionCard: document.getElementById('resAssertionCard'),
+    resAssertionPill: document.getElementById('resAssertionPill'),
+    resTraceCard: document.getElementById('resTraceCard'),
     resTraceIdPill: document.getElementById('resTraceIdPill'),
     resSubtabBtnBody: document.getElementById('resSubtabBtnBody'),
     resSubtabBtnHeaders: document.getElementById('resSubtabBtnHeaders'),
@@ -123,35 +134,49 @@
     resHeadersTableBody: document.getElementById('resHeadersTableBody'),
     traceIdLabel: document.getElementById('traceIdLabel'),
     traceDurationLabel: document.getElementById('traceDurationLabel'),
+    traceProxyTimeLabel: document.getElementById('traceProxyTimeLabel'),
+    traceTargetTimeLabel: document.getElementById('traceTargetTimeLabel'),
     traceTimelineContainer: document.getElementById('traceTimelineContainer'),
+    btnToggleAllSteps: document.getElementById('btnToggleAllSteps'),
+    btnToggleAllStepsText: document.getElementById('btnToggleAllStepsText'),
     btnExportApigee: document.getElementById('btnExportApigee'),
     btnExportOtel: document.getElementById('btnExportOtel'),
-    btnExportNative: document.getElementById('btnExportNative'),
-    stepVariablesDrawer: document.getElementById('stepVariablesDrawer'),
-    drawerStepTitle: document.getElementById('drawerStepTitle'),
-    drawerStepContent: document.getElementById('drawerStepContent'),
-    btnCloseVariablesDrawer: document.getElementById('btnCloseVariablesDrawer'),
     // Traces List & Detail Elements
+    tracesListView: document.getElementById('tracesListView'),
     tracesTableBody: document.getElementById('tracesTableBody'),
     btnClearTraces: document.getElementById('btnClearTraces'),
     btnRefreshTraces: document.getElementById('btnRefreshTraces'),
+    btnBackToTracesList: document.getElementById('btnBackToTracesList'),
     traceDetailCard: document.getElementById('traceDetailCard'),
     traceDetailMethod: document.getElementById('traceDetailMethod'),
     traceDetailPath: document.getElementById('traceDetailPath'),
     traceDetailStatus: document.getElementById('traceDetailStatus'),
     traceDetailProxy: document.getElementById('traceDetailProxy'),
     traceDetailDuration: document.getElementById('traceDetailDuration'),
+    traceDetailProxyDuration: document.getElementById('traceDetailProxyDuration'),
+    traceDetailTargetDuration: document.getElementById('traceDetailTargetDuration'),
     traceDetailId: document.getElementById('traceDetailId'),
     traceDetailStepsContainer: document.getElementById('traceDetailStepsContainer'),
     traceDetailTargetContainer: document.getElementById('traceDetailTargetContainer'),
+    btnToggleAllStepsDetail: document.getElementById('btnToggleAllStepsDetail'),
+    btnToggleAllStepsDetailText: document.getElementById('btnToggleAllStepsDetailText'),
     btnExportApigeeDetail: document.getElementById('btnExportApigeeDetail'),
     btnExportOtelDetail: document.getElementById('btnExportOtelDetail'),
-    btnExportNativeDetail: document.getElementById('btnExportNativeDetail'),
     btnCloseTraceDetail: document.getElementById('btnCloseTraceDetail'),
-    stepVariablesDrawerDetail: document.getElementById('stepVariablesDrawerDetail'),
-    drawerStepTitleDetail: document.getElementById('drawerStepTitleDetail'),
-    drawerStepContentDetail: document.getElementById('drawerStepContentDetail'),
-    btnCloseVariablesDrawerDetail: document.getElementById('btnCloseVariablesDrawerDetail'),
+    traceReqVerbBadge: document.getElementById('traceReqVerbBadge'),
+    traceReqUrlDisplay: document.getElementById('traceReqUrlDisplay'),
+    traceReqHeadersDetails: document.getElementById('traceReqHeadersDetails'),
+    traceReqHeadersCount: document.getElementById('traceReqHeadersCount'),
+    traceReqHeadersBody: document.getElementById('traceReqHeadersBody'),
+    traceReqPayloadBody: document.getElementById('traceReqPayloadBody'),
+    btnCopyReqPayload: document.getElementById('btnCopyReqPayload'),
+    traceResStatusBadge: document.getElementById('traceResStatusBadge'),
+    traceResHeadersDetails: document.getElementById('traceResHeadersDetails'),
+    traceResHeadersCount: document.getElementById('traceResHeadersCount'),
+    traceResHeadersBody: document.getElementById('traceResHeadersBody'),
+    traceResPayloadBody: document.getElementById('traceResPayloadBody'),
+    traceResPayloadTag: document.getElementById('traceResPayloadTag'),
+    btnCopyResPayload: document.getElementById('btnCopyResPayload'),
   };
 
   // --------------------------------------------------------------------------
@@ -342,12 +367,12 @@
   // Theme Management
   // --------------------------------------------------------------------------
   function initTheme() {
-    const savedTheme = localStorage.getItem('aft_theme') || 'dark';
+    const savedTheme = localStorage.getItem('aft_theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
   }
 
   function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('aft_theme', next);
@@ -395,6 +420,30 @@
     if (el.badgeNavProxies) el.badgeNavProxies.textContent = c.proxies || 0;
     if (el.badgeNavProducts) el.badgeNavProducts.textContent = c.products || 0;
     if (el.badgeNavUsers) el.badgeNavUsers.textContent = c.users || 0;
+  }
+
+  // --------------------------------------------------------------------------
+  // Mobile / Narrow Viewport Sidebar Management
+  // --------------------------------------------------------------------------
+  function closeSidebar() {
+    el.sidebarNav?.classList.remove('open');
+    el.sidebarBackdrop?.classList.remove('active');
+  }
+
+  function closeSidebarIfNarrow() {
+    if (window.innerWidth <= 850) {
+      closeSidebar();
+    }
+  }
+
+  function toggleSidebar() {
+    // If the window is wide enough to show the menu, keep it closed and backdrop hidden
+    if (window.innerWidth > 850) {
+      closeSidebar();
+      return;
+    }
+    el.sidebarNav?.classList.toggle('open');
+    el.sidebarBackdrop?.classList.toggle('active');
   }
 
   // --------------------------------------------------------------------------
@@ -453,6 +502,165 @@
     return category.toUpperCase();
   }
 
+  function getAvailableUrlsForProxy(item, data) {
+    if (!item) return [];
+    const origin = window.location.origin;
+    const paths = new Map(); // path -> { path, fullUrl, label }
+    const proxyName = (item.cleanName || item.name || '').replace(/\.(yaml|yml|json)$/i, '');
+    const endpoints = data?.endpoints || [];
+
+    if (endpoints.length === 0) {
+      const defaultPath = '/' + proxyName;
+      paths.set(defaultPath, {
+        path: defaultPath,
+        fullUrl: `${origin}${defaultPath}`,
+        label: 'default'
+      });
+    } else {
+      endpoints.forEach(ep => {
+        let base = ep.basePath || '/';
+        if (!base.startsWith('/')) base = '/' + base;
+        if (base.endsWith('/') && base.length > 1) base = base.slice(0, -1);
+
+        paths.set(base, {
+          path: base,
+          fullUrl: `${origin}${base}`,
+          label: ep.name || 'endpoint'
+        });
+
+        // Check conditional flows for proxy.pathsuffix
+        const flows = ep.flows || [];
+        flows.forEach(fl => {
+          if (fl.condition) {
+            const matches = fl.condition.matchAll(/proxy\.pathsuffix\s*(?:==|=|!=|MatchesPath)\s*["']([^"']+)["']/gi);
+            for (const m of matches) {
+              let suffix = m[1];
+              if (!suffix.startsWith('/')) suffix = '/' + suffix;
+              const fullPath = (base === '/' ? '' : base) + suffix;
+              if (!paths.has(fullPath)) {
+                paths.set(fullPath, {
+                  path: fullPath,
+                  fullUrl: `${origin}${fullPath}`,
+                  label: fl.name || ep.name || 'flow'
+                });
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // Check products for operations referencing this proxy
+    if (state.dataSummary?.products) {
+      Object.values(state.dataSummary.products).forEach(prod => {
+        const pData = prod.parsed || {};
+        const allOps = [
+          ...(pData.operations || []),
+          ...(pData.llmOperations || []),
+          ...(pData.payloadOperations || [])
+        ];
+        allOps.forEach(group => {
+          if (group.apiSource === proxyName) {
+            (group.operations || []).forEach(op => {
+              if (op.name) {
+                let opPath = op.name;
+                if (opPath === '/') {
+                  // Already covered by base
+                } else {
+                  if (!opPath.startsWith('/')) opPath = '/' + opPath;
+                  endpoints.forEach(ep => {
+                    let base = ep.basePath || '/';
+                    if (base.endsWith('/') && base.length > 1) base = base.slice(0, -1);
+                    const fullPath = (base === '/' ? '' : base) + opPath;
+                    if (!paths.has(fullPath)) {
+                      paths.set(fullPath, {
+                        path: fullPath,
+                        fullUrl: `${origin}${fullPath}`,
+                        label: op.model || group.apiSource || 'operation'
+                      });
+                    }
+                  });
+                }
+              }
+            });
+          }
+        });
+      });
+    }
+
+    // Check linked tests
+    const tests = getTestsForProxy(proxyName);
+    tests.forEach(t => {
+      if (t.path) {
+        let p = t.path;
+        if (!p.startsWith('/')) p = '/' + p;
+        if (!paths.has(p)) {
+          paths.set(p, {
+            path: p,
+            fullUrl: `${origin}${p}`,
+            label: t.name || 'test'
+          });
+        }
+      }
+    });
+
+    return Array.from(paths.values());
+  }
+
+  function renderHeaderProxyUrls(item, data) {
+    if (!el.headerProxyUrls) return;
+    const urls = getAvailableUrlsForProxy(item, data);
+    if (urls.length === 0) {
+      el.headerProxyUrls.style.display = 'none';
+      return;
+    }
+
+    el.headerProxyUrls.innerHTML = urls.map(u => `
+      <div class="header-url-badge" title="${escapeHtml(u.fullUrl)}">
+        <span class="header-url-icon">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </span>
+        <span class="header-url-text">${escapeHtml(u.fullUrl)}</span>
+        <button class="btn-copy-url" data-url="${escapeHtml(u.fullUrl)}" title="Copy complete URL">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Copy</span>
+        </button>
+        <button class="btn-test-url" data-path="${escapeHtml(u.path)}" data-proxy="${escapeHtml(item.name)}" title="Test endpoint in Console">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Test</span>
+        </button>
+      </div>
+    `).join('');
+
+    // Attach copy and test listeners
+    el.headerProxyUrls.querySelectorAll('.btn-copy-url').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const urlToCopy = btn.getAttribute('data-url');
+        if (!urlToCopy) return;
+        try {
+          await navigator.clipboard.writeText(urlToCopy);
+          const orig = btn.innerHTML;
+          btn.innerHTML = '<span>✓ Copied!</span>';
+          setTimeout(() => { btn.innerHTML = orig; }, 1800);
+        } catch (err) {
+          console.warn('Clipboard copy failed:', err);
+        }
+      });
+    });
+
+    el.headerProxyUrls.querySelectorAll('.btn-test-url').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const path = btn.getAttribute('data-path');
+        const proxy = btn.getAttribute('data-proxy');
+        openTestConsole(path, proxy);
+      });
+    });
+
+    el.headerProxyUrls.style.display = 'flex';
+  }
+
   function selectItem(category, name) {
     state.selectedCategory = category;
     state.selectedId = name;
@@ -481,6 +689,13 @@
     el.itemTitleDisplay.textContent = state.selectedItem.parsed?.name || state.selectedItem.cleanName;
     el.itemSubpath.textContent = state.selectedItem.parsed?.endpoints?.[0]?.basePath || name;
 
+    // Render complete URLs in header for proxies
+    if (category === 'proxies') {
+      renderHeaderProxyUrls(state.selectedItem, parsed);
+    } else {
+      if (el.headerProxyUrls) el.headerProxyUrls.style.display = 'none';
+    }
+
     // Refresh Sidebar active classes
     renderSidebar();
 
@@ -494,6 +709,8 @@
     } else {
       syncUrl();
     }
+
+    closeSidebarIfNarrow();
   }
 
   // --------------------------------------------------------------------------
@@ -877,6 +1094,7 @@
     });
 
     const proxyTests = getTestsForProxy(item.name);
+    const availableUrls = getAvailableUrlsForProxy(item, data);
 
     el.overviewContainer.innerHTML = `
       <div class="overview-header-card">
@@ -899,6 +1117,30 @@
             ${renderSnippetButton(`Proxy: ${data.name || item.cleanName}`, 'PROXY', data, 'Proxy YAML')}
           </div>
         </div>
+
+        ${availableUrls.length > 0 ? `
+          <div class="overview-proxy-urls" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-light);">
+            <div style="font-size: var(--font-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px;">Available Complete URLs</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${availableUrls.map(u => `
+                <div class="header-url-badge" style="padding: 4px 10px; font-size: 12px;" title="${escapeHtml(u.fullUrl)}">
+                  <span class="header-url-icon">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                  </span>
+                  <span class="header-url-text" style="font-size: 12px;">${escapeHtml(u.fullUrl)}</span>
+                  <button class="btn-copy-url btn-ov-copy" data-url="${escapeHtml(u.fullUrl)}" title="Copy URL">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>Copy</span>
+                  </button>
+                  <button class="btn-test-url btn-ov-test" data-path="${escapeHtml(u.path)}" data-proxy="${escapeHtml(item.name)}" title="Test endpoint in Console">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span>Test</span>
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <div class="overview-stats-grid">
           <div class="stat-box">
@@ -947,6 +1189,31 @@
       });
     });
 
+    el.overviewContainer.querySelectorAll('.btn-ov-copy').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const urlToCopy = btn.getAttribute('data-url');
+        if (!urlToCopy) return;
+        try {
+          await navigator.clipboard.writeText(urlToCopy);
+          const orig = btn.innerHTML;
+          btn.innerHTML = '<span>✓ Copied!</span>';
+          setTimeout(() => { btn.innerHTML = orig; }, 1800);
+        } catch (err) {
+          console.warn('Clipboard copy failed:', err);
+        }
+      });
+    });
+
+    el.overviewContainer.querySelectorAll('.btn-ov-test').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const path = btn.getAttribute('data-path');
+        const proxy = btn.getAttribute('data-proxy');
+        openTestConsole(path, proxy);
+      });
+    });
+
     const openTesterBtn = el.overviewContainer.querySelector('.btn-open-tester');
     if (openTesterBtn) {
       openTesterBtn.addEventListener('click', () => {
@@ -987,12 +1254,17 @@
                   </div>
                   ${renderSnippetButton(`Operations: ${group.apiSource}`, 'OPERATIONS', group)}
                 </div>
-                <table class="op-items-table">
+                <table class="op-items-table op-table-standard">
+                  <colgroup>
+                    <col style="width: 42%;">
+                    <col style="width: 26%;">
+                    <col style="width: 32%;">
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Resource Path</th>
-                      <th>Allowed Methods</th>
-                      <th>Operation Quota</th>
+                      <th style="width: 42%;">Resource Path</th>
+                      <th style="width: 26%;">Allowed Methods</th>
+                      <th style="width: 32%;">Operation Quota</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1001,9 +1273,9 @@
                       const opQuota = op.quota ? `${op.quota.limit || 0} / ${op.quota.interval || 1} ${op.quota.timeUnit || 'min'}` : 'Inherits Product Quota';
                       return `
                         <tr>
-                          <td style="font-family: var(--font-mono); font-weight: 600;">${escapeHtml(op.name || '/')}</td>
-                          <td>${methods.map(m => renderMethodBadge(m)).join(' ')}</td>
-                          <td><span class="quota-pill">${escapeHtml(opQuota)}</span></td>
+                          <td style="width: 42%; font-family: var(--font-mono); font-weight: 600;">${escapeHtml(op.name || '/')}</td>
+                          <td style="width: 26%;">${methods.map(m => renderMethodBadge(m)).join(' ')}</td>
+                          <td style="width: 32%;"><span class="quota-pill">${escapeHtml(opQuota)}</span></td>
                         </tr>
                       `;
                     }).join('')}
@@ -1038,13 +1310,19 @@
                   </div>
                   ${renderSnippetButton(`LLM Operations: ${group.apiSource}`, 'LLM_OPERATIONS', group)}
                 </div>
-                <table class="op-items-table">
+                <table class="op-items-table op-table-llm">
+                  <colgroup>
+                    <col style="width: 28%;">
+                    <col style="width: 24%;">
+                    <col style="width: 18%;">
+                    <col style="width: 30%;">
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Target Model</th>
-                      <th>Path</th>
-                      <th>Methods</th>
-                      <th>Model Token Quota</th>
+                      <th style="width: 28%;">Target Model</th>
+                      <th style="width: 24%;">Path</th>
+                      <th style="width: 18%;">Methods</th>
+                      <th style="width: 30%;">Model Token Quota</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1052,10 +1330,10 @@
                       const methods = op.methods || ['POST'];
                       return `
                         <tr>
-                          <td><span class="model-badge">${escapeHtml(op.model || 'Default Model')}</span></td>
-                          <td style="font-family: var(--font-mono);">${escapeHtml(op.name || '/')}</td>
-                          <td>${methods.map(m => renderMethodBadge(m)).join(' ')}</td>
-                          <td><span class="quota-pill">${escapeHtml(quotaText)}</span></td>
+                          <td style="width: 28%;"><span class="model-badge">${escapeHtml(op.model || 'Default Model')}</span></td>
+                          <td style="width: 24%; font-family: var(--font-mono);">${escapeHtml(op.name || '/')}</td>
+                          <td style="width: 18%;">${methods.map(m => renderMethodBadge(m)).join(' ')}</td>
+                          <td style="width: 30%;"><span class="quota-pill">${escapeHtml(quotaText)}</span></td>
                         </tr>
                       `;
                     }).join('')}
@@ -1088,12 +1366,17 @@
                   </div>
                   ${renderSnippetButton(`Payload Operations: ${group.apiSource}`, 'PAYLOAD_OPERATIONS', group)}
                 </div>
-                <table class="op-items-table">
+                <table class="op-items-table op-table-payload">
+                  <colgroup>
+                    <col style="width: 44%;">
+                    <col style="width: 24%;">
+                    <col style="width: 32%;">
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Operation / Tool Name</th>
-                      <th>Protocol</th>
-                      <th>Operation Quota</th>
+                      <th style="width: 44%;">Operation / Tool Name</th>
+                      <th style="width: 24%;">Protocol</th>
+                      <th style="width: 32%;">Operation Quota</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1101,9 +1384,9 @@
                       const opQuota = op.quota ? `${op.quota.limit || 0} / ${op.quota.interval || 1} ${op.quota.timeUnit || 'min'}` : 'Inherits Product Quota';
                       return `
                         <tr>
-                          <td style="font-family: var(--font-mono); font-weight: 600;">${escapeHtml(op.name || '/')}</td>
-                          <td><span class="protocol-badge">${escapeHtml(group.protocol || 'MCP')}</span></td>
-                          <td><span class="quota-pill">${escapeHtml(opQuota)}</span></td>
+                          <td style="width: 44%; font-family: var(--font-mono); font-weight: 600;">${escapeHtml(op.name || '/')}</td>
+                          <td style="width: 24%;"><span class="protocol-badge">${escapeHtml(group.protocol || 'MCP')}</span></td>
+                          <td style="width: 32%;"><span class="quota-pill">${escapeHtml(opQuota)}</span></td>
                         </tr>
                       `;
                     }).join('')}
@@ -1299,6 +1582,11 @@
 
     if (tab === 'tracesList') {
       loadRecentTraces();
+      if (state.selectedTraceId) {
+        showTraceDetailView();
+      } else {
+        showTracesListView();
+      }
     }
 
     syncUrl();
@@ -1319,6 +1607,7 @@
 
   function openTestConsole(path, proxyName) {
     switchTab('tester');
+    closeSidebarIfNarrow();
 
     const targetProxy = proxyName || (state.selectedCategory === 'proxies' ? state.selectedItem?.name : null) || state.currentProxyName;
     if (targetProxy) {
@@ -1641,29 +1930,37 @@
   }
 
   function renderAssertionResults(evalResult, traceId) {
-    if (!el.resAssertionPill || !el.assertionsList) return;
+    if (!el.resAssertionCard || !el.assertionsList) return;
 
     if (!evalResult) {
-      el.resAssertionPill.style.display = 'none';
-      el.resAssertionsCountBadge.textContent = '0';
-      el.assertionsEmptyNotice.style.display = 'block';
-      el.assertionsList.style.display = 'none';
+      el.resAssertionCard.style.display = 'none';
+      if (el.resAssertionsCountBadge) el.resAssertionsCountBadge.textContent = '0';
+      if (el.assertionsEmptyNotice) el.assertionsEmptyNotice.style.display = 'block';
+      if (el.assertionsList) el.assertionsList.style.display = 'none';
       return;
     }
 
     state.lastAssertionResults = evalResult;
 
-    // Badge in response header
-    el.resAssertionPill.style.display = 'inline-flex';
-    el.resAssertionPill.className = 'res-stat-pill res-assertion-pill ' + (evalResult.passed ? 'passed' : 'failed');
-    el.resAssertionPill.innerHTML = evalResult.passed
-      ? `✓ Passed (${evalResult.passedCount}/${evalResult.count})`
-      : `✗ Failed (${evalResult.passedCount}/${evalResult.count})`;
-    el.resAssertionPill.onclick = () => {
+    // Card in response header (2-line uniform card: Results / Passed or Failed)
+    el.resAssertionCard.style.display = 'flex';
+    const passClass = evalResult.passed ? 'assertion-passed' : 'assertion-failed';
+    el.resAssertionCard.className = `res-stat-card res-assertion-card clickable ${passClass}`;
+    const resultSummary = evalResult.passed
+      ? `Passed (${evalResult.passedCount}/${evalResult.count})`
+      : `Failed (${evalResult.passedCount}/${evalResult.count})`;
+    el.resAssertionCard.title = `Results: ${resultSummary} (Click to inspect assertions)`;
+    el.resAssertionCard.onclick = () => {
       switchResSubtab('assertions');
     };
 
-    el.resAssertionsCountBadge.textContent = evalResult.results.length;
+    if (el.resAssertionPill) {
+      el.resAssertionPill.textContent = resultSummary;
+    }
+
+    if (el.resAssertionsCountBadge) {
+      el.resAssertionsCountBadge.textContent = evalResult.results.length;
+    }
 
     // Subpane content
     el.assertionsEmptyNotice.style.display = 'none';
@@ -1831,13 +2128,18 @@
     // Set UI Loading state
     el.btnTesterSend.disabled = true;
     el.btnTesterSendText.textContent = 'Sending...';
-    el.resStatusBadge.textContent = 'Executing...';
-    el.resStatusBadge.className = 'res-status-badge';
-    el.resDurationPill.textContent = '...';
-    el.resSizePill.textContent = '...';
-    if (el.resStreamPill) el.resStreamPill.style.display = 'none';
-    el.resTraceIdPill.style.display = 'none';
-    if (el.resAssertionPill) el.resAssertionPill.style.display = 'none';
+    if (el.resStatusBadge) el.resStatusBadge.textContent = 'Sending...';
+    if (el.resStatusCard) {
+      el.resStatusCard.className = 'res-stat-card';
+      el.resStatusCard.title = 'Status: Sending...';
+    }
+    if (el.resDurationPill) el.resDurationPill.textContent = '...';
+    if (el.resDurationCard) el.resDurationCard.title = 'Latency: ...';
+    if (el.resSizePill) el.resSizePill.textContent = '...';
+    if (el.resSizeCard) el.resSizeCard.title = 'Size: ...';
+    if (el.resStreamCard) el.resStreamCard.style.display = 'none';
+    if (el.resTraceCard) el.resTraceCard.style.display = 'none';
+    if (el.resAssertionCard) el.resAssertionCard.style.display = 'none';
     el.resBodyCode.textContent = '';
 
     const startTime = performance.now();
@@ -1851,12 +2153,16 @@
 
       // Update response status immediately
       const initialDurationMs = Math.round(performance.now() - startTime);
-      el.resDurationPill.textContent = `${initialDurationMs} ms`;
-      el.resStatusBadge.textContent = `${response.status} ${response.statusText || ''}`;
-      el.resStatusBadge.className = 'res-status-badge ' + (
-        response.status >= 200 && response.status < 300 ? 'status-2xx' :
-        response.status >= 400 && response.status < 500 ? 'status-4xx' : 'status-5xx'
-      );
+      if (el.resDurationPill) el.resDurationPill.textContent = `${initialDurationMs} ms`;
+      if (el.resDurationCard) el.resDurationCard.title = `Latency: ${initialDurationMs} ms`;
+      const initialStatusText = `${response.status} ${response.statusText || (response.status === 200 ? 'OK' : '')}`.trim();
+      if (el.resStatusBadge) el.resStatusBadge.textContent = initialStatusText;
+      const initialStatusClass = response.status >= 200 && response.status < 300 ? 'status-2xx' :
+                                response.status >= 400 && response.status < 500 ? 'status-4xx' : 'status-5xx';
+      if (el.resStatusCard) {
+        el.resStatusCard.className = `res-stat-card ${initialStatusClass}`;
+        el.resStatusCard.title = `Status: ${initialStatusText}`;
+      }
 
       // Render Response Headers immediately
       el.resHeadersTableBody.innerHTML = '';
@@ -1869,13 +2175,19 @@
       // Check for x-bungee-trace-id
       const traceId = response.headers.get('x-bungee-trace-id');
       if (traceId) {
-        el.resTraceIdPill.textContent = `Trace: ${traceId.slice(0, 8)}...`;
-        el.resTraceIdPill.style.display = 'inline-block';
-        el.resTraceIdPill.onclick = () => {
-          switchResSubtab('trace');
-        };
+        if (el.resTraceCard) {
+          el.resTraceCard.style.display = 'flex';
+          el.resTraceCard.className = 'res-stat-card res-trace-card clickable trace-active';
+          el.resTraceCard.title = `Trace: ${traceId} (Click to inspect)`;
+          el.resTraceCard.onclick = () => {
+            switchResSubtab('trace');
+          };
+        }
+        if (el.resTraceIdPill) {
+          el.resTraceIdPill.textContent = `${traceId.slice(0, 8)}...`;
+        }
       } else {
-        el.resTraceIdPill.style.display = 'none';
+        if (el.resTraceCard) el.resTraceCard.style.display = 'none';
       }
 
       // Ensure user is on Response Body tab to watch stream
@@ -1885,7 +2197,7 @@
       let rawText = '';
 
       if (response.body && typeof response.body.getReader === 'function') {
-        if (el.resStreamPill) el.resStreamPill.style.display = 'inline-flex';
+        if (el.resStreamCard) el.resStreamCard.style.display = 'flex';
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
@@ -1901,8 +2213,10 @@
 
             const streamDurationMs = Math.round(performance.now() - startTime);
             const streamByteSize = new Blob([rawText]).size;
-            el.resDurationPill.textContent = `${streamDurationMs} ms`;
-            el.resSizePill.textContent = formatBytes(streamByteSize);
+            if (el.resDurationPill) el.resDurationPill.textContent = `${streamDurationMs} ms`;
+            if (el.resDurationCard) el.resDurationCard.title = `Latency: ${streamDurationMs} ms`;
+            if (el.resSizePill) el.resSizePill.textContent = formatBytes(streamByteSize);
+            if (el.resSizeCard) el.resSizeCard.title = `Size: ${formatBytes(streamByteSize)}`;
           }
           // Flush decoder remaining characters
           const finalChunk = decoder.decode();
@@ -1915,7 +2229,7 @@
           rawText += `\n[Stream Closed: ${streamErr.message}]`;
           el.resBodyCode.textContent = rawText;
         } finally {
-          if (el.resStreamPill) el.resStreamPill.style.display = 'none';
+          if (el.resStreamCard) el.resStreamCard.style.display = 'none';
         }
       } else {
         rawText = await response.text();
@@ -1923,8 +2237,10 @@
 
       const durationMs = Math.round(performance.now() - startTime);
       const byteSize = new Blob([rawText]).size;
-      el.resDurationPill.textContent = `${durationMs} ms`;
-      el.resSizePill.textContent = formatBytes(byteSize);
+      if (el.resDurationPill) el.resDurationPill.textContent = `${durationMs} ms`;
+      if (el.resDurationCard) el.resDurationCard.title = `Latency: ${durationMs} ms`;
+      if (el.resSizePill) el.resSizePill.textContent = formatBytes(byteSize);
+      if (el.resSizeCard) el.resSizeCard.title = `Size: ${formatBytes(byteSize)}`;
 
       // Pretty-format body if it's standard JSON (not SSE event stream)
       if (!contentType.includes('text/event-stream')) {
@@ -1965,11 +2281,15 @@
       }
 
     } catch (err) {
-      if (el.resStreamPill) el.resStreamPill.style.display = 'none';
+      if (el.resStreamCard) el.resStreamCard.style.display = 'none';
       const durationMs = Math.round(performance.now() - startTime);
-      el.resDurationPill.textContent = `${durationMs} ms`;
-      el.resStatusBadge.textContent = 'Error: ' + err.message;
-      el.resStatusBadge.className = 'res-status-badge status-5xx';
+      if (el.resDurationPill) el.resDurationPill.textContent = `${durationMs} ms`;
+      if (el.resDurationCard) el.resDurationCard.title = `Latency: ${durationMs} ms`;
+      if (el.resStatusBadge) el.resStatusBadge.textContent = 'Error';
+      if (el.resStatusCard) {
+        el.resStatusCard.className = 'res-stat-card status-5xx';
+        el.resStatusCard.title = `Error: ${err.message}`;
+      }
       el.resBodyCode.textContent = 'Fetch failed:\n' + err.stack;
 
       // Evaluate Assertions on Error
@@ -1988,7 +2308,7 @@
         renderProxyTests(state.currentProxyName);
       }
     } finally {
-      if (el.resStreamPill) el.resStreamPill.style.display = 'none';
+      if (el.resStreamCard) el.resStreamCard.style.display = 'none';
       el.btnTesterSend.disabled = false;
       el.btnTesterSendText.textContent = 'Send Request';
       loadRecentTraces();
@@ -1998,6 +2318,25 @@
   // --------------------------------------------------------------------------
   // Trace Profiling Waterfall & Step Inspector
   // --------------------------------------------------------------------------
+  function showTracesListView() {
+    state.selectedTraceId = null;
+    if (el.tracesListView) el.tracesListView.style.display = 'block';
+    if (el.traceDetailCard) el.traceDetailCard.style.display = 'none';
+    if (el.headerProxyUrls) el.headerProxyUrls.style.display = 'none';
+    renderSidebar();
+    highlightTraceRow(null);
+    el.itemTypeBadge.textContent = 'TRACES';
+    el.itemTitleDisplay.textContent = 'Runtime Execution Traces';
+    el.itemSubpath.textContent = 'Execution history';
+    syncUrl();
+  }
+
+  function showTraceDetailView() {
+    if (el.tracesListView) el.tracesListView.style.display = 'none';
+    if (el.traceDetailCard) el.traceDetailCard.style.display = 'block';
+    if (el.headerProxyUrls) el.headerProxyUrls.style.display = 'none';
+  }
+
   async function selectTrace(traceId) {
     state.selectedCategory = 'traces';
     state.selectedTraceId = traceId;
@@ -2007,12 +2346,14 @@
 
     // Close Test Console and switch to tracesList
     switchTab('tracesList');
+    closeSidebarIfNarrow();
 
     await loadTraceDetail(traceId);
   }
 
   async function loadTraceDetail(traceId) {
     try {
+      showTraceDetailView();
       const res = await fetch(`/api/traces/${traceId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const trace = await res.json();
@@ -2022,6 +2363,7 @@
       renderStandaloneTraceDetail(trace);
 
       // Update Header Meta
+      if (el.headerProxyUrls) el.headerProxyUrls.style.display = 'none';
       el.itemTypeBadge.textContent = 'TRACE';
       el.itemTitleDisplay.textContent = `${trace.verb || 'GET'} ${trace.path || '/'}`;
       el.itemSubpath.textContent = `Trace: ${trace.id} • ${trace.durationMs || 0}ms • Status ${trace.status || 200}`;
@@ -2032,10 +2374,213 @@
     }
   }
 
+  function getStepVariables(step) {
+    if (!step) return {};
+    return step.variablesSnapshot || step.variableSnapshots || step.variables || {};
+  }
+
+  function formatVariableValueHtml(val) {
+    if (val === null) return '<span style="color: var(--text-muted); font-style: italic;">null</span>';
+    if (val === undefined) return '<span style="color: var(--text-muted); font-style: italic;">undefined</span>';
+    if (typeof val === 'boolean') return `<span style="color: #1a73e8; font-weight: 600;">${val}</span>`;
+    if (typeof val === 'number') return `<span style="color: #0d652d; font-weight: 600;">${val}</span>`;
+    if (typeof val === 'object') {
+      try {
+        return `<pre>${escapeHtml(JSON.stringify(val, null, 2))}</pre>`;
+      } catch {
+        return `<pre>${escapeHtml(String(val))}</pre>`;
+      }
+    }
+    const str = String(val);
+    if ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(str);
+        return `<pre>${escapeHtml(JSON.stringify(parsed, null, 2))}</pre>`;
+      } catch {}
+    }
+    return `<span style="word-break: break-all;">${escapeHtml(str)}</span>`;
+  }
+
+  function createTraceStepElement(step, idx, onStepSelect) {
+    const item = document.createElement('div');
+    item.className = 'trace-step-item';
+    item.setAttribute('data-step-idx', String(idx));
+
+    const statusClass = step.status || 'SUCCESS';
+    const vars = getStepVariables(step);
+    const varKeys = Object.keys(vars);
+    const varCount = varKeys.length;
+
+    // Header row
+    const row = document.createElement('div');
+    row.className = 'trace-step-row';
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.title = 'Click to open or close step details and variable values';
+
+    row.innerHTML = `
+      <div class="trace-step-left">
+        <span class="trace-step-chevron">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </span>
+        <span class="trace-step-status-dot ${statusClass}"></span>
+        <div>
+          <div class="trace-step-name">${escapeHtml(step.name)}</div>
+          <div class="trace-step-meta">${escapeHtml(step.flow || 'Flow')} • ${escapeHtml(step.policyType || step.type || 'Policy')}</div>
+        </div>
+      </div>
+      <div class="trace-step-right">
+        <span class="badge badge-subtle">${statusClass}</span>
+        <span class="trace-step-duration">${step.durationMs !== undefined ? step.durationMs + 'ms' : ''}</span>
+        <span class="trace-step-vars-badge" title="${varCount} variables captured at this step">${varCount} vars</span>
+      </div>
+    `;
+
+    // Inline Details panel
+    const details = document.createElement('div');
+    details.className = 'trace-step-details';
+    details.style.display = 'none';
+
+    let metaHtml = '';
+    if (step.condition) {
+      metaHtml += `
+        <div class="trace-step-condition-card">
+          <span style="font-weight: 600; color: var(--text-sub);">Condition:</span>
+          <code style="background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; border: 1px solid var(--border-light); font-family: var(--font-mono); font-size: 11px;">${escapeHtml(step.condition)}</code>
+          <span class="badge ${step.conditionResult ? 'badge-subtle' : 'badge-outline'}" style="font-size: 10px;">${step.conditionResult ? 'Condition Met (TRUE)' : 'Condition False (SKIPPED)'}</span>
+        </div>
+      `;
+    }
+    if (step.error) {
+      metaHtml += `<div class="trace-step-error-alert">${escapeHtml(step.error)}</div>`;
+    }
+
+    let varsTableHtml = '';
+    if (varCount === 0) {
+      varsTableHtml = `<div style="color: var(--text-muted); font-size: 11px; padding: 6px 0;">No variables captured at this step.</div>`;
+    } else {
+      varsTableHtml = `
+        <table class="trace-step-vars-table">
+          <thead>
+            <tr>
+              <th style="width: 38%;">Variable Name</th>
+              <th>Value</th>
+              <th style="width: 36px; text-align: center;">Copy</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${varKeys.sort().map(k => {
+              const val = vars[k];
+              const rawStr = typeof val === 'object' && val !== null ? JSON.stringify(val, null, 2) : String(val ?? '');
+              return `
+                <tr class="trace-var-row" data-var-key="${escapeHtml(k.toLowerCase())}" data-var-val="${escapeHtml(rawStr.toLowerCase().slice(0, 100))}">
+                  <td class="trace-var-name">${escapeHtml(k)}</td>
+                  <td class="trace-var-val">${formatVariableValueHtml(val)}</td>
+                  <td style="text-align: center;">
+                    <button class="trace-var-copy-btn" title="Copy variable value" data-copy-val="${escapeHtml(rawStr)}">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    details.innerHTML = `
+      ${metaHtml ? `<div class="trace-step-details-meta">${metaHtml}</div>` : ''}
+      <div class="trace-step-vars-header">
+        <span class="trace-step-vars-title">Variables Snapshot (${varCount})</span>
+        ${varCount > 4 ? `<input type="text" class="trace-vars-filter-input" placeholder="Filter variables..." title="Search variable names or values" />` : ''}
+      </div>
+      <div class="trace-vars-table-wrapper">${varsTableHtml}</div>
+    `;
+
+    // Filter input handler
+    const filterInput = details.querySelector('.trace-vars-filter-input');
+    if (filterInput) {
+      filterInput.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const rows = details.querySelectorAll('tr.trace-var-row');
+        rows.forEach(r => {
+          const key = r.getAttribute('data-var-key') || '';
+          const val = r.getAttribute('data-var-val') || '';
+          if (!query || key.includes(query) || val.includes(query)) {
+            r.style.display = '';
+          } else {
+            r.style.display = 'none';
+          }
+        });
+      });
+      filterInput.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    // Copy variable buttons handler
+    details.querySelectorAll('.trace-var-copy-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textToCopy = btn.getAttribute('data-copy-val') || '';
+        navigator.clipboard.writeText(textToCopy);
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--status-success);"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        setTimeout(() => { btn.innerHTML = origHtml; }, 1500);
+      });
+    });
+
+    // Toggle expand/collapse on clicking row
+    const toggleStep = () => {
+      const isExpanded = item.classList.toggle('expanded');
+      details.style.display = isExpanded ? 'block' : 'none';
+    };
+
+    row.addEventListener('click', toggleStep);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleStep();
+      }
+    });
+
+    item.appendChild(row);
+    item.appendChild(details);
+    return item;
+  }
+
+  function toggleAllStepDetails(container, textEl) {
+    if (!container) return;
+    const items = container.querySelectorAll('.trace-step-item');
+    if (items.length === 0) return;
+
+    const anyCollapsed = Array.from(items).some(it => !it.classList.contains('expanded'));
+    items.forEach(it => {
+      const details = it.querySelector('.trace-step-details');
+      if (anyCollapsed) {
+        it.classList.add('expanded');
+        if (details) details.style.display = 'block';
+      } else {
+        it.classList.remove('expanded');
+        if (details) details.style.display = 'none';
+      }
+    });
+
+    if (textEl) {
+      textEl.textContent = anyCollapsed ? 'Collapse All' : 'Expand All';
+    }
+  }
+
   function renderTraceWaterfall(trace) {
     if (!trace) return;
+    const totalDuration = Number(trace.durationMs || 0);
+    const targetDuration = Number(trace.target?.durationMs || 0);
+    const proxyDuration = Math.max(0, Math.round((totalDuration - targetDuration) * 10) / 10);
+
     el.traceIdLabel.textContent = `Trace ID: ${trace.id}`;
-    el.traceDurationLabel.textContent = `Total Latency: ${trace.durationMs || 0} ms (${trace.steps?.length || 0} steps)`;
+    el.traceDurationLabel.textContent = `Total Latency: ${totalDuration} ms (${trace.steps?.length || 0} steps)`;
+    if (el.traceProxyTimeLabel) el.traceProxyTimeLabel.textContent = `Proxy Processing: ${proxyDuration} ms`;
+    if (el.traceTargetTimeLabel) el.traceTargetTimeLabel.textContent = `Target Processing: ${targetDuration} ms`;
+    if (el.btnToggleAllStepsText) el.btnToggleAllStepsText.textContent = 'Expand All';
 
     el.traceTimelineContainer.innerHTML = '';
 
@@ -2046,29 +2591,8 @@
     }
 
     steps.forEach((step, idx) => {
-      const row = document.createElement('div');
-      row.className = 'trace-step-row';
-
-      const statusClass = step.status || 'SUCCESS';
-      row.innerHTML = `
-        <div class="trace-step-left">
-          <span class="trace-step-status-dot ${statusClass}"></span>
-          <div>
-            <div class="trace-step-name">${escapeHtml(step.name)}</div>
-            <div class="trace-step-meta">${escapeHtml(step.flow || 'Flow')} • ${escapeHtml(step.policyType || 'Policy')}</div>
-          </div>
-        </div>
-        <div class="trace-step-right">
-          <span class="badge badge-subtle">${statusClass}</span>
-          <span class="trace-step-duration">${step.durationMs !== undefined ? step.durationMs + 'ms' : ''}</span>
-        </div>
-      `;
-
-      row.addEventListener('click', () => {
-        openStepVariablesDrawer(step);
-      });
-
-      el.traceTimelineContainer.appendChild(row);
+      const stepEl = createTraceStepElement(step, idx);
+      el.traceTimelineContainer.appendChild(stepEl);
     });
 
     // Also append target info if present
@@ -2080,10 +2604,63 @@
         <div style="font-family: var(--font-mono); color: var(--text-muted); word-break: break-all;">${escapeHtml(trace.target.url || '')}</div>
         <div style="margin-top: 4px; display: flex; gap: 12px;">
           <span>Status: <strong>${trace.target.status || 200}</strong></span>
-          <span>Target Duration: <strong>${trace.target.durationMs || 0}ms</strong></span>
+          <span>Target Processing: <strong>${trace.target.durationMs || 0}ms</strong></span>
         </div>
       `;
       el.traceTimelineContainer.appendChild(targetDiv);
+    }
+  }
+
+  function renderHeadersTable(headers) {
+    if (!headers || typeof headers !== 'object' || Object.keys(headers).length === 0) {
+      return '<div style="color: var(--text-muted); font-style: italic; padding: 4px;">No headers recorded</div>';
+    }
+    const keys = Object.keys(headers).sort();
+    return `<table style="width: 100%; border-collapse: collapse;"><tbody>` +
+      keys.map(k => `
+        <tr style="border-bottom: 1px solid var(--border-light);">
+          <td style="padding: 3px 6px; font-weight: 600; color: var(--text-sub); width: 35%; word-break: break-all; vertical-align: top;">${escapeHtml(k)}</td>
+          <td style="padding: 3px 6px; color: var(--text-main); word-break: break-all; vertical-align: top;">${escapeHtml(String(headers[k]))}</td>
+        </tr>
+      `).join('') +
+      `</tbody></table>`;
+  }
+
+  function renderPayloadBox(payload, bodyEl, copyBtnEl) {
+    if (!bodyEl) return;
+    if (payload === undefined || payload === null || (typeof payload === 'string' && payload.trim() === '')) {
+      bodyEl.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">(No payload)</span>';
+      if (copyBtnEl) copyBtnEl.style.display = 'none';
+      return;
+    }
+
+    let formatted = '';
+    if (typeof payload === 'object') {
+      try {
+        formatted = JSON.stringify(payload, null, 2);
+      } catch {
+        formatted = String(payload);
+      }
+    } else if (typeof payload === 'string') {
+      try {
+        const parsed = JSON.parse(payload);
+        formatted = JSON.stringify(parsed, null, 2);
+      } catch {
+        formatted = payload;
+      }
+    } else {
+      formatted = String(payload);
+    }
+
+    bodyEl.textContent = formatted;
+    if (copyBtnEl) {
+      copyBtnEl.style.display = 'inline-block';
+      copyBtnEl.onclick = () => {
+        navigator.clipboard.writeText(formatted);
+        const orig = copyBtnEl.textContent;
+        copyBtnEl.textContent = 'Copied!';
+        setTimeout(() => { copyBtnEl.textContent = orig; }, 1500);
+      };
     }
   }
 
@@ -2092,17 +2669,59 @@
 
     el.traceDetailCard.style.display = 'block';
 
-    const verb = trace.verb || 'GET';
-    el.traceDetailMethod.textContent = verb;
-    el.traceDetailPath.textContent = trace.path || '/';
+    const req = trace.request || {};
+    const res = trace.response || {};
 
-    const status = trace.status || 200;
+    const verb = req.verb || trace.verb || 'GET';
+    el.traceDetailMethod.textContent = verb;
+    el.traceDetailPath.textContent = req.path || trace.path || '/';
+
+    const status = res.status || trace.status || 200;
     el.traceDetailStatus.textContent = status;
     el.traceDetailStatus.className = 'res-status-badge ' + (status >= 200 && status < 300 ? 'status-2xx' : status >= 400 && status < 500 ? 'status-4xx' : 'status-5xx');
 
+    const totalDuration = Number(trace.durationMs || 0);
+    const targetDuration = Number(trace.target?.durationMs || 0);
+    const proxyDuration = Math.max(0, Math.round((totalDuration - targetDuration) * 10) / 10);
+
     el.traceDetailProxy.textContent = `Proxy: ${trace.proxyName || 'proxy'}`;
-    el.traceDetailDuration.textContent = `Duration: ${trace.durationMs || 0}ms (${trace.steps?.length || 0} steps)`;
+    el.traceDetailDuration.textContent = `Total Latency: ${totalDuration}ms (${trace.steps?.length || 0} steps)`;
+    if (el.traceDetailProxyDuration) el.traceDetailProxyDuration.textContent = `Proxy Processing: ${proxyDuration}ms`;
+    if (el.traceDetailTargetDuration) el.traceDetailTargetDuration.textContent = `Target Processing: ${targetDuration}ms`;
     el.traceDetailId.textContent = `ID: ${trace.id}`;
+    if (el.btnToggleAllStepsDetailText) el.btnToggleAllStepsDetailText.textContent = 'Expand All';
+
+    // Render Request Details
+    if (el.traceReqVerbBadge) el.traceReqVerbBadge.textContent = verb;
+    if (el.traceReqUrlDisplay) el.traceReqUrlDisplay.textContent = req.url || req.path || trace.path || '/';
+    const reqHeaders = req.headers || {};
+    const reqHeaderCount = Object.keys(reqHeaders).length;
+    if (el.traceReqHeadersCount) el.traceReqHeadersCount.textContent = reqHeaderCount;
+    if (el.traceReqHeadersBody) el.traceReqHeadersBody.innerHTML = renderHeadersTable(reqHeaders);
+    renderPayloadBox(req.body, el.traceReqPayloadBody, el.btnCopyReqPayload);
+
+    // Render Response Details
+    const resStatusText = res.statusText || (status === 200 ? 'OK' : '');
+    if (el.traceResStatusBadge) {
+      el.traceResStatusBadge.textContent = `${status} ${resStatusText}`.trim();
+      el.traceResStatusBadge.className = 'res-status-badge ' + (status >= 200 && status < 300 ? 'status-2xx' : status >= 400 && status < 500 ? 'status-4xx' : 'status-5xx');
+    }
+    const resHeaders = res.headers || {};
+    const resHeaderCount = Object.keys(resHeaders).length;
+    if (el.traceResHeadersCount) el.traceResHeadersCount.textContent = resHeaderCount;
+    if (el.traceResHeadersBody) el.traceResHeadersBody.innerHTML = renderHeadersTable(resHeaders);
+
+    const isStreamed = (resHeaders['content-type'] && (
+      resHeaders['content-type'].includes('event-stream') ||
+      resHeaders['content-type'].includes('ndjson') ||
+      resHeaders['content-type'].includes('stream')
+    )) || (typeof res.body === 'string' && (res.body.startsWith('data: ') || res.body.includes('\ndata: ')));
+
+    if (el.traceResPayloadTag) {
+      el.traceResPayloadTag.style.display = isStreamed ? 'inline-block' : 'none';
+    }
+
+    renderPayloadBox(res.body, el.traceResPayloadBody, el.btnCopyResPayload);
 
     // Render Steps
     el.traceDetailStepsContainer.innerHTML = '';
@@ -2110,27 +2729,9 @@
     if (steps.length === 0) {
       el.traceDetailStepsContainer.innerHTML = '<div class="trace-empty-notice">No steps recorded in this trace.</div>';
     } else {
-      steps.forEach(step => {
-        const row = document.createElement('div');
-        row.className = 'trace-step-row';
-        const statusClass = step.status || 'SUCCESS';
-        row.innerHTML = `
-          <div class="trace-step-left">
-            <span class="trace-step-status-dot ${statusClass}"></span>
-            <div>
-              <div class="trace-step-name">${escapeHtml(step.name)}</div>
-              <div class="trace-step-meta">${escapeHtml(step.flow || 'Flow')} • ${escapeHtml(step.policyType || 'Policy')}</div>
-            </div>
-          </div>
-          <div class="trace-step-right">
-            <span class="badge badge-subtle">${statusClass}</span>
-            <span class="trace-step-duration">${step.durationMs !== undefined ? step.durationMs + 'ms' : ''}</span>
-          </div>
-        `;
-        row.addEventListener('click', () => {
-          openStepVariablesDrawerDetail(step);
-        });
-        el.traceDetailStepsContainer.appendChild(row);
+      steps.forEach((step, idx) => {
+        const stepEl = createTraceStepElement(step, idx, null);
+        el.traceDetailStepsContainer.appendChild(stepEl);
       });
     }
 
@@ -2153,51 +2754,12 @@
     }
   }
 
-  function openStepVariablesDrawerDetail(step) {
-    if (!el.stepVariablesDrawerDetail) return;
-    el.stepVariablesDrawerDetail.style.display = 'flex';
-    el.drawerStepTitleDetail.textContent = `Variables Snapshot: ${step.name} (${step.flow})`;
-
-    const vars = step.variableSnapshots || {};
-    const keys = Object.keys(vars);
-
-    if (keys.length === 0) {
-      el.drawerStepContentDetail.innerHTML = '<span style="color: var(--text-muted);">No variable changes recorded at this step.</span>';
-      return;
-    }
-
-    let html = '';
-    keys.sort().forEach(k => {
-      html += `<div><strong style="color: var(--text-sub);">${escapeHtml(k)}:</strong> <span style="color: var(--text-main);">${escapeHtml(String(vars[k]))}</span></div>`;
-    });
-    el.drawerStepContentDetail.innerHTML = html;
-  }
-
   function renderEmptyTraceNotice(msg) {
     el.traceTimelineContainer.innerHTML = `<div class="trace-empty-notice">${escapeHtml(msg)}</div>`;
   }
 
-  function openStepVariablesDrawer(step) {
-    el.stepVariablesDrawer.style.display = 'flex';
-    el.drawerStepTitle.textContent = `Variables Snapshot: ${step.name} (${step.flow})`;
-
-    const vars = step.variableSnapshots || {};
-    const keys = Object.keys(vars);
-
-    if (keys.length === 0) {
-      el.drawerStepContent.innerHTML = '<span style="color: var(--text-muted);">No variable changes recorded at this step.</span>';
-      return;
-    }
-
-    let html = '';
-    keys.sort().forEach(k => {
-      html += `<div><strong style="color: var(--text-sub);">${escapeHtml(k)}:</strong> <span style="color: var(--text-main);">${escapeHtml(String(vars[k]))}</span></div>`;
-    });
-    el.drawerStepContent.innerHTML = html;
-  }
-
   // --------------------------------------------------------------------------
-  // Trace Export (Apigee Trace JSON, OTEL JSON, Native Bungee JSON)
+  // Trace Export (Apigee Trace JSON, OTEL JSON)
   // --------------------------------------------------------------------------
   async function exportTrace(format) {
     const trace = state.currentTrace;
@@ -2207,7 +2769,7 @@
     }
 
     try {
-      const url = format === 'native' ? `/api/traces/${trace.id}` : `/api/traces/${trace.id}?format=${format}`;
+      const url = `/api/traces/${trace.id}?format=${format}`;
       const res = await fetch(url);
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -2357,6 +2919,23 @@
     // Theme toggle
     el.themeToggleBtn.addEventListener('click', toggleTheme);
 
+    // Sidebar responsive toggle & backdrop
+    el.sidebarToggleBtn?.addEventListener('click', toggleSidebar);
+    el.sidebarBackdrop?.addEventListener('click', closeSidebarIfNarrow);
+
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 850) {
+        el.sidebarNav?.classList.remove('open');
+        el.sidebarBackdrop?.classList.remove('active');
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el.sidebarNav?.classList.contains('open')) {
+        closeSidebarIfNarrow();
+      }
+    });
+
     // Sidebar search
     el.sidebarSearchInput.addEventListener('input', () => {
       const val = el.sidebarSearchInput.value.trim();
@@ -2376,14 +2955,9 @@
         const toggleType = header.getAttribute('data-toggle');
         if (toggleType === 'traces') {
           state.selectedCategory = 'traces';
-          state.selectedTraceId = null;
-          renderSidebar();
-          highlightTraceRow(null);
-          if (el.traceDetailCard) el.traceDetailCard.style.display = 'none';
-          el.itemTypeBadge.textContent = 'TRACES';
-          el.itemTitleDisplay.textContent = 'Runtime Execution Traces';
-          el.itemSubpath.textContent = 'Live execution history';
+          showTracesListView();
           switchTab('tracesList');
+          closeSidebarIfNarrow();
           return;
         }
         const section = header.closest('.nav-section');
@@ -2508,38 +3082,28 @@
       setTimeout(() => { el.btnCopyResponseBody.textContent = orig; }, 1500);
     });
 
-    // Trace Exports
+    // Trace Exports & Step Expansion
+    el.btnToggleAllSteps?.addEventListener('click', () => {
+      toggleAllStepDetails(el.traceTimelineContainer, el.btnToggleAllStepsText);
+    });
     el.btnExportApigee.addEventListener('click', () => exportTrace('apigee'));
     el.btnExportOtel.addEventListener('click', () => exportTrace('otel'));
-    el.btnExportNative.addEventListener('click', () => exportTrace('native'));
-
-    el.btnCloseVariablesDrawer.addEventListener('click', () => {
-      el.stepVariablesDrawer.style.display = 'none';
-    });
 
     // Standalone Trace Detail Actions
-    el.btnCloseTraceDetail?.addEventListener('click', () => {
-      if (el.traceDetailCard) el.traceDetailCard.style.display = 'none';
-      state.selectedTraceId = null;
-      renderSidebar();
-      highlightTraceRow(null);
-      el.itemTypeBadge.textContent = 'TRACES';
-      el.itemTitleDisplay.textContent = 'Runtime Execution Traces';
-      el.itemSubpath.textContent = 'Live execution history';
-    });
+    el.btnBackToTracesList?.addEventListener('click', showTracesListView);
+    el.btnCloseTraceDetail?.addEventListener('click', showTracesListView);
 
-    el.btnCloseVariablesDrawerDetail?.addEventListener('click', () => {
-      if (el.stepVariablesDrawerDetail) el.stepVariablesDrawerDetail.style.display = 'none';
+    el.btnToggleAllStepsDetail?.addEventListener('click', () => {
+      toggleAllStepDetails(el.traceDetailStepsContainer, el.btnToggleAllStepsDetailText);
     });
-
     el.btnExportApigeeDetail?.addEventListener('click', () => exportTrace('apigee'));
     el.btnExportOtelDetail?.addEventListener('click', () => exportTrace('otel'));
-    el.btnExportNativeDetail?.addEventListener('click', () => exportTrace('native'));
 
     // Traces List Actions
     el.btnClearTraces.addEventListener('click', async () => {
       if (confirm('Are you sure you want to clear all runtime traces?')) {
         await fetch('/api/traces', { method: 'DELETE' });
+        showTracesListView();
         loadRecentTraces();
       }
     });

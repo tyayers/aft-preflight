@@ -5,6 +5,7 @@ import { DataManager } from "./lib/DataManager";
 import { DeploymentManager } from "./lib/DeploymentManager";
 import { TraceManager } from "./lib/tracer";
 import { runBuild } from "./build";
+import { AnalyticsManager } from "./lib/analytics";
 import { REST_AI_MessagesProxy } from "./proxies/REST-AI-Messages";
 import { REST_AI_InteractionsProxy } from "./proxies/REST-AI-Interactions";
 import { REST_AI_GenerateContentProxy } from "./proxies/REST-AI-GenerateContent";
@@ -79,8 +80,8 @@ function startBungeeServer(portNum: number) {
     "/v1beta/interactions": REST_AI_InteractionsProxy,
     "/v1/projects/*": REST_AI_GenerateContentProxy,
     "/v1/projects": REST_AI_GenerateContentProxy,
-    "/v1/ai/completions/*": REST_AI_CompletionsProxy,
-    "/v1/ai/completions": REST_AI_CompletionsProxy,
+    "/v1/chat/completions/*": REST_AI_CompletionsProxy,
+    "/v1/chat/completions": REST_AI_CompletionsProxy,
     },
     async fetch(req) {
     if (req.method === "OPTIONS") {
@@ -314,6 +315,32 @@ function startBungeeServer(portNum: number) {
     if ((url.pathname === "/api/traces" || url.pathname === "/api/traces/clear") && (req.method === "DELETE" || req.method === "POST")) {
       TraceManager.clear();
       return Response.json({ success: true, message: "Traces cleared" }, { headers: corsHeaders });
+    }
+
+    // Analytics API endpoints
+    // POST /api/analytics -> save analytics record
+    if (url.pathname === "/api/analytics" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const saved = await AnalyticsManager.saveRecord(body);
+        return Response.json({ success: true, ...saved, record: { id: saved.id, ...body } }, { headers: corsHeaders });
+      } catch (err: any) {
+        console.error("Analytics save error:", err);
+        return Response.json({ success: false, error: err.message }, { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // GET /api/analytics -> retrieve the last 500 records
+    if (url.pathname === "/api/analytics" && req.method === "GET") {
+      try {
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 500;
+        const records = await AnalyticsManager.getRecentRecords(isNaN(limit) ? 500 : limit);
+        return Response.json({ success: true, count: records.length, data: records, records }, { headers: corsHeaders });
+      } catch (err: any) {
+        console.error("Analytics retrieve error:", err);
+        return Response.json({ success: false, error: err.message, data: [], records: [] }, { status: 500, headers: corsHeaders });
+      }
     }
 
     // List deployment tests

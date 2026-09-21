@@ -16,7 +16,7 @@ Bungee Runtime uses an Ahead-Of-Time (AOT) code generation architecture that com
 
 ```
 ┌──────────────────────────────────────┐
-│  Declarative Apigee YAMLs           │
+│  Declarative Apigee YAMLs            │
 │  - data/proxies/*.yaml               │
 │  - data/deployments/*.yaml           │
 │  - data/templates/*.yaml             │
@@ -33,7 +33,7 @@ Bungee Runtime uses an Ahead-Of-Time (AOT) code generation architecture that com
                    │
                    ▼
 ┌──────────────────────────────────────┐
-│  Generated TypeScript Proxy Classes │
+│  Generated TypeScript Proxy Classes  │
 │  - proxies/<ProxyName>.ts            │
 │  - Mounted in index.ts HTTP server   │
 └──────────────────┬───────────────────┘

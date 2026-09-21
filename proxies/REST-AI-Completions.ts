@@ -2164,8 +2164,9 @@ export class RESTAICompletionsProxy {
     context.setVariable("ai.type", reqInfo.requestType);
     context.setVariable("ai.user", "unknown");
 
-    if (effectiveProvider === "anthropic") {
+    if (effectiveProvider === "anthropic" && targetRoute === "googlecloud") {
     context.setVariable("ai.method", reqInfo.isStreaming ? "streamRawPredict" : "rawPredict");
+    context.removeVariable("request.header.anthropic-beta");
     } else if (effectiveProvider === "google") {
     if (reqInfo.requestType === "embeddings") {
     context.setVariable("ai.method", "embedContent");
@@ -2460,6 +2461,7 @@ export class RESTAICompletionsProxy {
     if (requestContent && typeof requestContent === "object") {
     requestContent["anthropic_version"] = "vertex-2023-10-16";
     delete requestContent.model;
+    delete requestContent.context_management;
     }
     }
 
@@ -2803,7 +2805,8 @@ export class RESTAICompletionsProxy {
           "assignTo": "request",
           "ignoreUnresolvedVariables": true,
           "removeHeaders": [
-            "accept-encoding"
+            "accept-encoding",
+            "anthropic-beta"
           ]
         }, context);
       });

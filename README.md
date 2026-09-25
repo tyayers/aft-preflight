@@ -252,7 +252,7 @@ bun run clear.ts --keep-deployments
 To compile Bungee Runtime into a standalone executable binary:
 
 ```bash
-bun build --compile ./index.ts --outfile aft-testpilot
+bun build --compile ./index.ts --outfile aft-preflight
 ```
 
 ### Deploying to Google Cloud Run
@@ -266,5 +266,5 @@ Use the provided `deploy.sh` script to compile a Linux binary and deploy directl
 # Build and deploy to Google Cloud Run
 export GOOGLE_CLOUD_PROJECT="your-project-id"
 export GOOGLE_CLOUD_LOCATION="us-central1"
-./deploy.sh -s aft-testpilot
+./deploy.sh -s aft-preflight
 ```

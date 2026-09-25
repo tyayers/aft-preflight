@@ -178,7 +178,7 @@ describe("Tracing & Profiling Engine", () => {
 
     const otelTrace = TraceManager.toOtelTrace(trace);
     expect(otelTrace.resourceSpans).toBeDefined();
-    expect(otelTrace.resourceSpans[0].resource.attributes.find((a: any) => a.key === "service.name")?.value.stringValue).toBe("aft-testpilot");
+    expect(otelTrace.resourceSpans[0].resource.attributes.find((a: any) => a.key === "service.name")?.value.stringValue).toBe("aft-preflight");
     expect(otelTrace.resourceSpans[0].scopeSpans).toBeDefined();
 
     const spans = otelTrace.resourceSpans[0].scopeSpans[0].spans;

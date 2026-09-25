@@ -11,6 +11,6 @@ coverage/
 .DS_Store
 
 # Explicitly ensure binary and static assets are included
-!aft-testpilot
+!aft-preflight
 !public/**
 !data/**

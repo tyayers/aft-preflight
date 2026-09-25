@@ -34,6 +34,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 bun
 bungee-service
-aft-testpilot
+aft-preflight
 data
-
+proxies

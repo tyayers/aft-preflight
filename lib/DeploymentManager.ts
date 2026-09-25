@@ -122,8 +122,14 @@ export class DeploymentManager {
         }
 
         // 3. Extract and save KVM from deployment
-        const rawKvm = doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
-        if (rawKvm && typeof rawKvm === "object") {
+        const rawKvm = doc.kvms || doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
+        if (Array.isArray(rawKvm)) {
+          for (const item of rawKvm) {
+            if (item && item.name) {
+              DataManager.saveKvm(item.name, item.values || {});
+            }
+          }
+        } else if (rawKvm && typeof rawKvm === "object") {
           for (const [mapId, mapData] of Object.entries(rawKvm)) {
             if (mapData && typeof mapData === "object") {
               DataManager.saveKvm(mapId, mapData as Record<string, any>);
@@ -439,8 +445,15 @@ export class DeploymentManager {
     }
 
     // 3. Process KVM entries
-    const rawKvm = doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
-    if (rawKvm && typeof rawKvm === "object") {
+    const rawKvm = doc.kvms || doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
+    if (Array.isArray(rawKvm)) {
+      for (const item of rawKvm) {
+        if (item && item.name) {
+          DataManager.saveKvm(item.name, item.values || {});
+          importedKvm.push(item.name);
+        }
+      }
+    } else if (rawKvm && typeof rawKvm === "object") {
       for (const [mapIdentifier, mapData] of Object.entries(rawKvm)) {
         if (mapData && typeof mapData === "object") {
           DataManager.saveKvm(mapIdentifier, mapData as Record<string, any>);

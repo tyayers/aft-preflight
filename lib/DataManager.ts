@@ -132,8 +132,17 @@ export class DataManager {
             }
 
             // Load KVM from deployment
-            const rawKvm = doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
-            if (rawKvm && typeof rawKvm === "object") {
+            const rawKvm = doc.kvms || doc.kvm || doc.keyvaluemaps || doc.keyvaluemap;
+            if (Array.isArray(rawKvm)) {
+              for (const item of rawKvm) {
+                if (item && item.name) {
+                  globalKvmStore[item.name] = {
+                    ...(globalKvmStore[item.name] || {}),
+                    ...(item.values || {}),
+                  };
+                }
+              }
+            } else if (rawKvm && typeof rawKvm === "object") {
               for (const [mapId, mapData] of Object.entries(rawKvm)) {
                 if (mapData && typeof mapData === "object") {
                   globalKvmStore[mapId] = {

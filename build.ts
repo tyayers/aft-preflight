@@ -510,8 +510,11 @@ async function executeBuild(options?: BuildOptions): Promise<{ success: boolean;
       const endpointSuffix = endpoints.length > 1 ? `_${endpoint.name || epIndex}` : "";
       const fileBaseName = `${templateBaseName}${endpointSuffix}`;
       const fileName = `${fileBaseName}.ts`;
-      const className = `${toPascalCase(templateBaseName)}${toPascalCase(endpointSuffix)}Proxy`;
+      let className = `${toPascalCase(templateBaseName)}${toPascalCase(endpointSuffix)}Proxy`;
       const functionName = `${templateBaseName.replace(/[^a-zA-Z0-9]/g, "_")}${endpointSuffix.replace(/[^a-zA-Z0-9]/g, "_")}Proxy`;
+      if (className === functionName) {
+        className = `${className}Class`;
+      }
 
     // Collect flow step references with conditions
     interface FlowStep {

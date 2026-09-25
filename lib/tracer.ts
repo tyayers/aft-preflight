@@ -892,7 +892,7 @@ export class TraceManager {
         {
           resource: {
             attributes: [
-              { key: "service.name", value: { stringValue: "aft-testpilot" } },
+              { key: "service.name", value: { stringValue: "aft-preflight" } },
               { key: "service.version", value: { stringValue: "1.0.0" } },
               { key: "apigee.proxy", value: { stringValue: trace.proxyName } },
             ],
@@ -900,7 +900,7 @@ export class TraceManager {
           scopeSpans: [
             {
               scope: {
-                name: "aft-testpilot.tracer",
+                name: "aft-preflight.tracer",
                 version: "1.0.0",
               },
               spans,

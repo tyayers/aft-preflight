@@ -1,5 +1,5 @@
 import { ApigeeConverter } from "./converter.js";
-import { Template, Proxy, Feature, Product, Products, User, Users, ApigeeConfig } from "./interfaces.js";
+import { Template, Proxy, Feature, Product, Products, User, Users, Deployment, Deployments, ApigeeConfig } from "./interfaces.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -14,12 +14,14 @@ export class ApigeeTemplaterService {
   proxiesPath: string = "./data/proxies/";
   productsPath: string = "./data/products/";
   usersPath: string = "./data/users/";
+  deploymentsPath: string = "./data/deployments/";
   public apigeeProxyListCache: { [key: string]: string[] } = {};
   public apigeeSharedFlowListCache: { [key: string]: string[] } = {};
   public templateListCache: string[] = [];
   public featureListCache: string[] = [];
   public productListCache: string[] = [];
   public userListCache: string[] = [];
+  public deploymentListCache: string[] = [];
 
   private cacheTtlMs: number = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
@@ -44,6 +46,13 @@ export class ApigeeTemplaterService {
     );
   }
 
+  public get proxiesRepository(): string {
+    return (
+      process.env.AFT_PROXIES_REPOSITORY ||
+      `${this.baseRepository}/tree/main/proxies`
+    );
+  }
+
   public get productsRepository(): string {
     return (
       process.env.AFT_PRODUCTS_REPOSITORY ||
@@ -55,6 +64,13 @@ export class ApigeeTemplaterService {
     return (
       process.env.AFT_USERS_REPOSITORY ||
       `${this.baseRepository}/tree/main/users`
+    );
+  }
+
+  public get deploymentsRepository(): string {
+    return (
+      process.env.AFT_DEPLOYMENTS_REPOSITORY ||
+      `${this.baseRepository}/tree/main/deployments`
     );
   }
 
@@ -70,11 +86,11 @@ export class ApigeeTemplaterService {
     return path.join(homeDir, ".aft", "cache");
   }
 
-  private getCachePath(key: "templates" | "features" | "products" | "users"): string {
+  private getCachePath(key: "templates" | "features" | "products" | "users" | "deployments"): string {
     return path.join(this.getCacheDir(), `${key}.json`);
   }
 
-  private readCache<T>(key: "templates" | "features" | "products" | "users"): T[] | null {
+  private readCache<T>(key: "templates" | "features" | "products" | "users" | "deployments"): T[] | null {
     try {
       const filePath = this.getCachePath(key);
       if (!fs.existsSync(filePath)) return null;
@@ -95,7 +111,7 @@ export class ApigeeTemplaterService {
     }
   }
 
-  private readStaleCache<T>(key: "templates" | "features" | "products" | "users"): T[] | null {
+  private readStaleCache<T>(key: "templates" | "features" | "products" | "users" | "deployments"): T[] | null {
     try {
       const filePath = this.getCachePath(key);
       if (!fs.existsSync(filePath)) return null;
@@ -108,7 +124,7 @@ export class ApigeeTemplaterService {
     return null;
   }
 
-  private writeCache<T>(key: "templates" | "features" | "products" | "users", data: T[]): void {
+  private writeCache<T>(key: "templates" | "features" | "products" | "users" | "deployments", data: T[]): void {
     try {
       const filePath = this.getCachePath(key);
       const dir = path.dirname(filePath);
@@ -448,15 +464,17 @@ export class ApigeeTemplaterService {
   public async proxiesList(): Promise<Proxy[]> {
     return new Promise(async (resolve, reject) => {
       let proxies: Proxy[] = [];
-      let proxyNames: string[] = fs.readdirSync(this.proxiesPath);
+      if (fs.existsSync(this.proxiesPath)) {
+        let proxyNames: string[] = fs.readdirSync(this.proxiesPath);
 
-      for (let proxyPath of proxyNames) {
-        if (proxyPath.endsWith(".json")) {
-          let proxy: Proxy = JSON.parse(fs.readFileSync(this.proxiesPath + proxyPath, "utf8"));
-          proxies.push(proxy);
-        } else if (proxyPath.endsWith(".yaml")) {
-          let proxy: Proxy = YAML.parse(fs.readFileSync(this.proxiesPath + proxyPath, "utf8"));
-          proxies.push(proxy);
+        for (let proxyPath of proxyNames) {
+          if (proxyPath.endsWith(".json")) {
+            let proxy: Proxy = JSON.parse(fs.readFileSync(this.proxiesPath + proxyPath, "utf8"));
+            proxies.push(proxy);
+          } else if (proxyPath.endsWith(".yaml")) {
+            let proxy: Proxy = YAML.parse(fs.readFileSync(this.proxiesPath + proxyPath, "utf8"));
+            proxies.push(proxy);
+          }
         }
       }
 
@@ -505,9 +523,6 @@ export class ApigeeTemplaterService {
           path.resolve(process.cwd(), candidate),
           path.join(process.cwd(), candidate),
           path.join(import.meta.dirname, "../templates", candidate),
-          path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", candidate),
-          path.join(process.cwd(), "templates", candidate),
-          path.join(process.cwd(), "data/templates", candidate),
         ];
 
         for (const lp of localPaths) {
@@ -520,13 +535,11 @@ export class ApigeeTemplaterService {
                 result = YAML.parse(content) as Template;
               }
               if (result) {
-                // If this file is actually a compiled proxy (type === "proxy" and no features),
-                // skip it so templateGet doesn't treat a compiled proxy as a template definition.
-                if (result.type === "proxy" && (!result.features || (Array.isArray(result.features) && result.features.length === 0))) {
-                  continue;
-                }
                 if (!result.name) {
                   result.name = candidate.replace(/\.(yaml|yml|json)$/i, "");
+                }
+                if (!result.features) {
+                  result.features = [];
                 }
                 return resolve(result);
               }
@@ -548,6 +561,9 @@ export class ApigeeTemplaterService {
               result.name = fileStem;
               if (yamlName && yamlName !== fileStem) {
                 result.yamlName = yamlName;
+              }
+              if (!result.features) {
+                result.features = [];
               }
               return resolve(result);
             }
@@ -594,61 +610,134 @@ export class ApigeeTemplaterService {
     });
   }
 
-  public async proxyGet(name: string): Promise<Proxy | undefined> {
+  public async loadTemplate(
+    templateRef: string | Template,
+    relativeDir?: string,
+  ): Promise<Template | undefined> {
+    return new Promise(async (resolve) => {
+      if (typeof templateRef === "object" && templateRef !== null) {
+        const tmpl = templateRef as Template;
+        if (!tmpl.features) tmpl.features = [];
+        return resolve(tmpl);
+      }
+      if (typeof templateRef === "string") {
+        let res = await this.templateGet(templateRef, relativeDir);
+        if (res && !res.features) res.features = [];
+        return resolve(res);
+      }
+      resolve(undefined);
+    });
+  }
+
+  public async proxyGet(name: string, relativeDir?: string): Promise<Proxy | undefined> {
     return new Promise(async (resolve, reject) => {
       let result: Proxy | undefined = undefined;
-      let tempName = name.replaceAll(" ", "-");
-      let proxyString = "";
-      let foundJson = false,
-        foundYaml = false;
+      const candidates = this.getCandidateFilenames(name);
 
-      if (!tempName.endsWith(".json") && !tempName.endsWith(".yaml")) {
-        if (fs.existsSync(this.proxiesPath + tempName + ".json")) {
-          proxyString = fs.readFileSync(this.proxiesPath + tempName + ".json", "utf8");
-          foundJson = true;
-        } else if (fs.existsSync(this.proxiesPath + tempName + ".yaml")) {
-          proxyString = fs.readFileSync(this.proxiesPath + tempName + ".yaml", "utf8");
-          foundYaml = true;
-        } else if (fs.existsSync(path.join(process.cwd(), "templates", tempName + ".yaml"))) {
-          proxyString = fs.readFileSync(path.join(process.cwd(), "templates", tempName + ".yaml"), "utf8");
-          foundYaml = true;
-        } else if (fs.existsSync(path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", tempName + ".yaml"))) {
-          proxyString = fs.readFileSync(path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", tempName + ".yaml"), "utf8");
-          foundYaml = true;
-        }
-      } else if (fs.existsSync(tempName)) {
-        proxyString = fs.readFileSync(tempName, "utf8");
-        if (tempName.endsWith(".json")) foundJson = true;
-        else if (tempName.endsWith(".yaml")) foundYaml = true;
-      } else if (fs.existsSync(path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", tempName))) {
-        proxyString = fs.readFileSync(path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", tempName), "utf8");
-        if (tempName.endsWith(".json")) foundJson = true;
-        else if (tempName.endsWith(".yaml")) foundYaml = true;
-      }
+      // 1. Local filesystem check
+      for (const candidate of candidates) {
+        const localPaths = [
+          ...(relativeDir ? [path.resolve(relativeDir, candidate), path.join(relativeDir, candidate)] : []),
+          path.join(this.proxiesPath, candidate),
+          path.join("repository/proxies", candidate),
+          candidate,
+          path.resolve(process.cwd(), candidate),
+          path.join(process.cwd(), candidate),
+          path.join(import.meta.dirname, "../proxies", candidate),
+        ];
 
-      if (!foundJson && !foundYaml) {
-        // try to fetch remotely
-        let fileName = tempName.endsWith(".json") ? tempName : tempName + ".json";
-        let response = await fetch(this.remoteGetBaseUrl + "proxies/" + fileName);
-        if (response.status == 200) foundJson = true;
-
-        if (response.status == 404) {
-          fileName = tempName.endsWith(".yaml") ? tempName : tempName + ".yaml";
-          response = await fetch(this.remoteGetBaseUrl + "proxies/" + fileName);
-          if (response.status == 200) foundYaml = true;
-        }
-
-        if (response.status == 200) {
-          proxyString = await response.text();
+        for (const lp of localPaths) {
+          if (fs.existsSync(lp) && !fs.statSync(lp).isDirectory()) {
+            try {
+              const content = fs.readFileSync(lp, "utf8");
+              if (candidate.endsWith(".json")) {
+                result = JSON.parse(content) as Proxy;
+              } else {
+                result = YAML.parse(content) as Proxy;
+              }
+              if (result) {
+                if (!result.name) {
+                  result.name = candidate.replace(/\.(yaml|yml|json)$/i, "");
+                }
+                return resolve(result);
+              }
+            } catch (e) {}
+          }
         }
       }
 
-      if (proxyString) {
-        if (foundJson) result = JSON.parse(proxyString);
-        else result = YAML.parse(proxyString);
+      // 2. Direct HTTP / Raw repository fetch
+      if (name.startsWith("https://") || name.startsWith("http://")) {
+        try {
+          const res = await fetch(name, { headers: this.getGithubHeaders() });
+          if (res.status === 200) {
+            const text = await res.text();
+            result = name.endsWith(".json") ? JSON.parse(text) : YAML.parse(text);
+            if (result) {
+              const fileStem = path.basename(name).replace(/\.(yaml|yml|json)$/i, "");
+              const yamlName = result.name;
+              result.name = fileStem;
+              if (yamlName && yamlName !== fileStem) {
+                result.yamlName = yamlName;
+              }
+              return resolve(result);
+            }
+          }
+        } catch (e) {}
+      } else {
+        const rawBaseUrl = this.getRepoRawBaseUrl(this.proxiesRepository);
+        for (const candidate of candidates) {
+          try {
+            const res = await fetch(`${rawBaseUrl}${candidate}`, {
+              headers: this.getGithubHeaders(),
+            });
+            if (res.status === 200) {
+              const text = await res.text();
+              result = candidate.endsWith(".json") ? JSON.parse(text) : YAML.parse(text);
+              if (result) {
+                const fileStem = candidate.replace(/\.(yaml|yml|json)$/i, "");
+                const yamlName = result.name;
+                result.name = fileStem;
+                if (yamlName && yamlName !== fileStem) {
+                  result.yamlName = yamlName;
+                }
+                return resolve(result);
+              }
+            }
+          } catch (e) {}
+        }
       }
+
+      // 3. Fallback: repository list search
+      try {
+        const allProxies = await this.proxiesList();
+        const baseNames = candidates.map((c) => c.replace(/\.(yaml|yml|json)$/i, ""));
+        const found = allProxies.find(
+          (p) =>
+            baseNames.includes(p.name) ||
+            baseNames.includes(p.name.replace(/-+/g, "-")) ||
+            (p.yamlName && baseNames.includes(p.yamlName)),
+        );
+        if (found) result = found;
+      } catch (e) {}
 
       resolve(result);
+    });
+  }
+
+  public async loadProxy(
+    proxyRef: string | Proxy,
+    relativeDir?: string,
+  ): Promise<Proxy | undefined> {
+    return new Promise(async (resolve) => {
+      if (typeof proxyRef === "object" && proxyRef !== null) {
+        return resolve(proxyRef as Proxy);
+      }
+      if (typeof proxyRef === "string") {
+        let res = await this.proxyGet(proxyRef, relativeDir);
+        return resolve(res);
+      }
+      resolve(undefined);
     });
   }
 
@@ -678,9 +767,6 @@ export class ApigeeTemplaterService {
           path.resolve(process.cwd(), candidate),
           path.join(process.cwd(), candidate),
           path.join(import.meta.dirname, "../features", candidate),
-          path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", candidate),
-          path.join(process.cwd(), "features", candidate),
-          path.join(process.cwd(), "data/features", candidate),
         ];
 
         for (const lp of localPaths) {
@@ -918,20 +1004,23 @@ export class ApigeeTemplaterService {
     template: Template,
     converter: ApigeeConverter,
     parameters: { [key: string]: string } = {},
+    relativeDir?: string,
   ): Promise<Proxy | undefined> {
     return new Promise(async (resolve, reject) => {
       let proxy: Proxy | undefined = undefined;
 
       if (template) {
         let features: Feature[] = [];
-        for (let templateFeature of template.features) {
-          let loadedFeature = await this.loadFeature(templateFeature);
-          if (loadedFeature) {
-            features.push(loadedFeature);
-          } else {
-            // abort, could not load feature
-            console.error(`Could not load feature ${templateFeature}.`);
-            resolve(undefined);
+        if (template.features && Array.isArray(template.features)) {
+          for (let templateFeature of template.features) {
+            let loadedFeature = await this.loadFeature(templateFeature, relativeDir);
+            if (loadedFeature) {
+              features.push(loadedFeature);
+            } else {
+              // abort, could not load feature
+              console.error(`Could not load feature ${templateFeature}.`);
+              resolve(undefined);
+            }
           }
         }
 
@@ -942,26 +1031,36 @@ export class ApigeeTemplaterService {
     });
   }
 
-  public async loadFeature(featureName: string): Promise<Feature | undefined> {
+  public async loadFeature(
+    featureRef: string | Feature,
+    relativeDir?: string,
+  ): Promise<Feature | undefined> {
     return new Promise(async (resolve, reject) => {
-      let uId = "";
-      if (featureName.includes(":")) {
-        let parts = featureName.split(":");
-        if (parts.length === 2) {
-          uId = parts[0] ?? "";
-          featureName = parts[1] ?? featureName;
+      if (typeof featureRef === "object" && featureRef !== null) {
+        return resolve(featureRef as Feature);
+      }
+      if (typeof featureRef === "string") {
+        let featureName = featureRef;
+        let uId = "";
+        if (featureName.includes(":")) {
+          let parts = featureName.split(":");
+          if (parts.length === 2) {
+            uId = parts[0] ?? "";
+            featureName = parts[1] ?? featureName;
+          }
         }
-      }
-      let feature = await this.featureGet(featureName);
-      if (!feature) {
-        console.error(`Could not load feature ${featureName}.`);
-        resolve(undefined);
-      } else if (uId) {
-        // set dynamic uId
-        feature.uid = uId;
-      }
+        let feature = await this.featureGet(featureName, relativeDir);
+        if (!feature) {
+          console.error(`Could not load feature ${featureName}.`);
+          return resolve(undefined);
+        } else if (uId) {
+          // set dynamic uId
+          feature.uid = uId;
+        }
 
-      resolve(feature);
+        return resolve(feature);
+      }
+      resolve(undefined);
     });
   }
 
@@ -1692,9 +1791,6 @@ export class ApigeeTemplaterService {
           path.resolve(process.cwd(), candidate),
           path.join(process.cwd(), candidate),
           path.join(import.meta.dirname, "../products", candidate),
-          path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", candidate),
-          path.join(process.cwd(), "products", candidate),
-          path.join(process.cwd(), "data/products", candidate),
         ];
 
         for (const lp of localPaths) {
@@ -2068,9 +2164,6 @@ export class ApigeeTemplaterService {
           path.resolve(process.cwd(), candidate),
           path.join(process.cwd(), candidate),
           path.join(import.meta.dirname, "../users", candidate),
-          path.join("/home/tyayers/projects/apigee/apigee-templater/tests/data", candidate),
-          path.join(process.cwd(), "users", candidate),
-          path.join(process.cwd(), "data/users", candidate),
         ];
 
         for (const lp of localPaths) {
@@ -2148,16 +2241,259 @@ export class ApigeeTemplaterService {
     });
   }
 
+  public async deploymentsList(forceRefresh: boolean = false): Promise<Deployment[]> {
+    return new Promise(async (resolve, reject) => {
+      if (!forceRefresh) {
+        const cached = this.readCache<Deployment>("deployments");
+        if (cached && cached.length > 0) {
+          this.deploymentListCache = cached.map((x) => x.name);
+          return resolve(cached);
+        }
+      }
+
+      let deployments: Deployment[] = [];
+
+      // 1. Local filesystem
+      if (fs.existsSync(this.deploymentsPath)) {
+        let deploymentNames: string[] = fs.readdirSync(this.deploymentsPath);
+        for (let deploymentPath of deploymentNames) {
+          const fullPath = path.join(this.deploymentsPath, deploymentPath);
+          if (fs.statSync(fullPath).isDirectory()) continue;
+          try {
+            if (deploymentPath.endsWith(".json")) {
+              deployments.push(JSON.parse(fs.readFileSync(fullPath, "utf8")));
+            } else if (deploymentPath.endsWith(".yaml") || deploymentPath.endsWith(".yml")) {
+              deployments.push(YAML.parse(fs.readFileSync(fullPath, "utf8")));
+            }
+          } catch (e) {}
+        }
+      }
+
+      // 2. Remote repository
+      try {
+        const repoUrl = this.getRepoApiUrl(this.deploymentsRepository);
+        const res = await fetch(repoUrl, { headers: this.getGithubHeaders() });
+        if (res.status === 200) {
+          const items: any = await res.json();
+          if (Array.isArray(items)) {
+            for (const item of items) {
+              if (
+                item &&
+                item.name &&
+                (item.name.endsWith(".json") || item.name.endsWith(".yaml") || item.name.endsWith(".yml")) &&
+                item.download_url
+              ) {
+                try {
+                  const dl = await fetch(item.download_url, { headers: this.getGithubHeaders() });
+                  if (dl.status === 200) {
+                    const text = await dl.text();
+                    const parsed: Deployment = item.name.endsWith(".json")
+                      ? JSON.parse(text)
+                      : (YAML.parse(text) as Deployment);
+                    if (parsed) {
+                      const fileStem = item.name.replace(/\.(yaml|yml|json)$/i, "");
+                      if (!parsed.name) parsed.name = fileStem;
+                      deployments.push(parsed);
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+          }
+        }
+      } catch (e) {}
+
+      if (deployments && deployments.length > 0) {
+        this.writeCache("deployments", deployments);
+        this.deploymentListCache = deployments.map((x) => x.name);
+      } else {
+        const stale = this.readStaleCache<Deployment>("deployments");
+        if (stale && stale.length > 0) {
+          deployments = stale;
+          this.deploymentListCache = deployments.map((x) => x.name);
+        }
+      }
+
+      resolve(deployments);
+    });
+  }
+
+  public async deploymentGet(name: string, relativeDir?: string): Promise<Deployment | undefined> {
+    return new Promise(async (resolve, reject) => {
+      let result: Deployment | undefined = undefined;
+      const candidates = this.getCandidateFilenames(name);
+
+      // 1. Local filesystem check
+      for (const candidate of candidates) {
+        const localPaths = [
+          ...(relativeDir ? [path.resolve(relativeDir, candidate), path.join(relativeDir, candidate)] : []),
+          path.join(this.deploymentsPath, candidate),
+          path.join("repository/deployments", candidate),
+          candidate,
+          path.resolve(process.cwd(), candidate),
+          path.join(process.cwd(), candidate),
+          path.join(import.meta.dirname, "../deployments", candidate),
+        ];
+
+        for (const lp of localPaths) {
+          if (fs.existsSync(lp) && !fs.statSync(lp).isDirectory()) {
+            try {
+              const content = fs.readFileSync(lp, "utf8");
+              if (candidate.endsWith(".json")) {
+                result = JSON.parse(content) as Deployment;
+              } else {
+                result = YAML.parse(content) as Deployment;
+              }
+              if (result) {
+                if (!result.name) {
+                  result.name = candidate.replace(/\.(yaml|yml|json)$/i, "");
+                }
+                return resolve(result);
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
+      // 2. Direct HTTP / Raw repository fetch
+      if (name.startsWith("https://") || name.startsWith("http://")) {
+        try {
+          const res = await fetch(name, { headers: this.getGithubHeaders() });
+          if (res.status === 200) {
+            const text = await res.text();
+            result = name.endsWith(".json") ? JSON.parse(text) : YAML.parse(text);
+            if (result) {
+              if (!result.name) {
+                result.name = path.basename(name).replace(/\.(yaml|yml|json)$/i, "");
+              }
+              return resolve(result);
+            }
+          }
+        } catch (e) {}
+      } else {
+        const rawBaseUrl = this.getRepoRawBaseUrl(this.deploymentsRepository);
+        for (const candidate of candidates) {
+          try {
+            const res = await fetch(`${rawBaseUrl}${candidate}`, {
+              headers: this.getGithubHeaders(),
+            });
+            if (res.status === 200) {
+              const text = await res.text();
+              result = candidate.endsWith(".json") ? JSON.parse(text) : YAML.parse(text);
+              if (result) {
+                if (!result.name) {
+                  result.name = candidate.replace(/\.(yaml|yml|json)$/i, "");
+                }
+                return resolve(result);
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      // 3. Fallback: repository list search
+      try {
+        const allDeployments = await this.deploymentsList();
+        const baseNames = candidates.map((c) => c.replace(/\.(yaml|yml|json)$/i, ""));
+        const found = allDeployments.find(
+          (d) =>
+            baseNames.includes(d.name) ||
+            baseNames.includes(d.name.replace(/-+/g, "-")) ||
+            (d.displayName && baseNames.includes(d.displayName.replace(/-+/g, "-"))),
+        );
+        if (found) result = found;
+      } catch (e) {}
+
+      resolve(result);
+    });
+  }
+
+  public async loadDeployment(
+    deploymentRef: string | Deployment,
+    relativeDir?: string,
+  ): Promise<Deployment | undefined> {
+    return new Promise(async (resolve) => {
+      if (typeof deploymentRef === "object" && deploymentRef !== null) {
+        return resolve(deploymentRef as Deployment);
+      }
+      if (typeof deploymentRef === "string") {
+        let res = await this.deploymentGet(deploymentRef, relativeDir);
+        return resolve(res);
+      }
+      resolve(undefined);
+    });
+  }
+
+  public async deploymentResolveAssets(
+    deployment: Deployment,
+    relativeDir?: string,
+  ): Promise<{
+    templates: Template[];
+    proxies: Proxy[];
+    features: Feature[];
+    products: Product[];
+    users: User[];
+  }> {
+    const templates: Template[] = [];
+    const proxies: Proxy[] = [];
+    const features: Feature[] = [];
+    const products: Product[] = [];
+    const users: User[] = [];
+
+    if (deployment.templates && Array.isArray(deployment.templates)) {
+      for (const tRef of deployment.templates) {
+        const t = await this.loadTemplate(tRef, relativeDir);
+        if (t) templates.push(t);
+      }
+    }
+
+    if (deployment.proxies && Array.isArray(deployment.proxies)) {
+      for (const pRef of deployment.proxies) {
+        const p = await this.loadProxy(pRef, relativeDir);
+        if (p) proxies.push(p);
+      }
+    }
+
+    if (deployment.features && Array.isArray(deployment.features)) {
+      for (const fRef of deployment.features) {
+        const f = await this.loadFeature(fRef, relativeDir);
+        if (f) features.push(f);
+      }
+    }
+
+    if (deployment.products && Array.isArray(deployment.products)) {
+      for (const prodRef of deployment.products) {
+        const prod = await this.loadProduct(prodRef, relativeDir);
+        if (prod) products.push(prod);
+      }
+    }
+
+    if (deployment.users && Array.isArray(deployment.users)) {
+      for (const uRef of deployment.users) {
+        const u = await this.loadUser(uRef, relativeDir);
+        if (u) users.push(u);
+      }
+    }
+
+    return { templates, proxies, features, products, users };
+  }
+
   public async repositoryGet(name: string): Promise<{
-    type: "template" | "feature" | "product" | "user";
-    data: Template | Feature | Product | User;
+    type: "template" | "feature" | "product" | "user" | "proxy" | "deployment";
+    data: Template | Feature | Product | User | Proxy | Deployment;
   } | undefined> {
-    // Check templates, features, products, users in that order
+    // Check templates, features, deployments, proxies, products, users in that order
     let template = await this.templateGet(name);
     if (template) return { type: "template", data: template };
 
     let feature = await this.featureGet(name);
     if (feature) return { type: "feature", data: feature };
+
+    let deployment = await this.deploymentGet(name);
+    if (deployment) return { type: "deployment", data: deployment };
+
+    let proxy = await this.proxyGet(name);
+    if (proxy) return { type: "proxy", data: proxy };
 
     let product = await this.productGet(name);
     if (product) return { type: "product", data: product };
@@ -2334,23 +2670,93 @@ export class ApigeeTemplaterService {
             let key = cred.consumerKey || cred.key;
             let secret = cred.consumerSecret || cred.secret;
             if (key && secret) {
+              const keyUrl = `https://apigee${drz ? "." + drz + ".rep" : ""}.googleapis.com/v1/organizations/${apigeeOrg}/developers/${encodeURIComponent(email)}/apps/${encodeURIComponent(appName)}/keys/${encodeURIComponent(key)}`;
               const createKeyUrl = `https://apigee${drz ? "." + drz + ".rep" : ""}.googleapis.com/v1/organizations/${apigeeOrg}/developers/${encodeURIComponent(email)}/apps/${encodeURIComponent(appName)}/keys/create`;
-              let keyResp = await fetch(
-                createKeyUrl,
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: token,
-                    "Content-Type": "application/json",
+
+              // First, check if the key already exists on this app
+              let checkKeyResp = await fetch(keyUrl, {
+                headers: { Authorization: token },
+              });
+
+              if (checkKeyResp.status === 200) {
+                // Key already exists: attempt overwrite by deleting existing key and recreating
+                try {
+                  const delResp = await fetch(keyUrl, {
+                    method: "DELETE",
+                    headers: { Authorization: token },
+                  });
+                  if (delResp.status === 200 || delResp.status === 204) {
+                    await fetch(createKeyUrl, {
+                      method: "POST",
+                      headers: {
+                        Authorization: token,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        consumerKey: key,
+                        consumerSecret: secret,
+                      }),
+                    });
+                  }
+                } catch (e) {
+                  // Ignore error since it is ok if it already exists
+                }
+              } else {
+                // Key does not exist yet: create it
+                let keyResp = await fetch(
+                  createKeyUrl,
+                  {
+                    method: "POST",
+                    headers: {
+                      Authorization: token,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      consumerKey: key,
+                      consumerSecret: secret,
+                    }),
                   },
-                  body: JSON.stringify({
-                    consumerKey: key,
-                    consumerSecret: secret,
-                  }),
-                },
-              );
-              if (keyResp.status !== 200 && keyResp.status !== 201) {
-                await this.logApiError("app credential CREATE", createKeyUrl, keyResp);
+                );
+
+                if (keyResp.status !== 200 && keyResp.status !== 201) {
+                  let errText = "";
+                  try {
+                    errText = await keyResp.clone().text();
+                  } catch (e) {}
+
+                  const isAlreadyExists =
+                    keyResp.status === 409 ||
+                    errText.toLowerCase().includes("already exists") ||
+                    errText.toLowerCase().includes("conflict") ||
+                    errText.includes("ConsumerKeyAlreadyExists");
+
+                  if (isAlreadyExists) {
+                    // Attempt overwrite: delete and recreate
+                    try {
+                      const delResp = await fetch(keyUrl, {
+                        method: "DELETE",
+                        headers: { Authorization: token },
+                      });
+                      if (delResp.status === 200 || delResp.status === 204) {
+                        await fetch(createKeyUrl, {
+                          method: "POST",
+                          headers: {
+                            Authorization: token,
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            consumerKey: key,
+                            consumerSecret: secret,
+                          }),
+                        });
+                      }
+                    } catch (e) {
+                      // Ignore error since it is ok if it already exists
+                    }
+                  } else {
+                    await this.logApiError("app credential CREATE", createKeyUrl, keyResp);
+                  }
+                }
               }
 
               if (cred.products || cred.apiProducts) {
@@ -2369,7 +2775,18 @@ export class ApigeeTemplaterService {
                   },
                 );
                 if (assocResp.status !== 200 && assocResp.status !== 201) {
-                  await this.logApiError("app credential association", assocKeyUrl, assocResp);
+                  let assocErrText = "";
+                  try {
+                    assocErrText = await assocResp.clone().text();
+                  } catch (e) {}
+                  const isAlreadyAssoc =
+                    assocResp.status === 409 ||
+                    assocErrText.toLowerCase().includes("already exists") ||
+                    assocErrText.toLowerCase().includes("already associated") ||
+                    assocErrText.toLowerCase().includes("conflict");
+                  if (!isAlreadyAssoc) {
+                    await this.logApiError("app credential association", assocKeyUrl, assocResp);
+                  }
                 }
               }
             }

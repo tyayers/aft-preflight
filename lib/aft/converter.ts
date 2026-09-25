@@ -31,6 +31,10 @@ import {
   UserApp,
   UserCredential,
   UserAttribute,
+  Deployment,
+  Deployments,
+  Kvm,
+  KVM,
 } from "./interfaces.js";
 
 export class ApigeeConverter {
@@ -1594,6 +1598,9 @@ export class ApigeeConverter {
       }
     }
 
+    if (!template.features) {
+      template.features = [];
+    }
     template.features.push(featurePath);
 
     // add parameters with feature name and uid if available
@@ -1614,6 +1621,9 @@ export class ApigeeConverter {
     removeFeaturePath: string,
     removeFeature: Feature,
   ): Template {
+    if (!template.features) {
+      template.features = [];
+    }
     let featureIndex = templateFeatures.findIndex((x) => x.name === removeFeature.name);
     let featurePathIndex = template.features.findIndex(
       (x) =>
@@ -3482,6 +3492,43 @@ export class ApigeeConverter {
     return apigeeProduct;
   }
 
+  public productToApigeeEmulatorProduct(
+    product: Product,
+    defaultProxies?: string[],
+    defaultEnvironments?: string[],
+  ): any {
+    let apigeeProduct = this.productToApigeeProduct(product);
+
+    if (!apigeeProduct.approvalType) {
+      apigeeProduct.approvalType = product.approvalType || "auto";
+    }
+
+    if (!apigeeProduct.environments || apigeeProduct.environments.length === 0) {
+      if (defaultEnvironments && defaultEnvironments.length > 0) {
+        apigeeProduct.environments = [...defaultEnvironments];
+      } else {
+        apigeeProduct.environments = ["test"];
+      }
+    }
+
+    if (!apigeeProduct.proxies || apigeeProduct.proxies.length === 0) {
+      if (product.proxies && product.proxies.length > 0) {
+        apigeeProduct.proxies = [...product.proxies];
+      } else if (defaultProxies && defaultProxies.length > 0) {
+        apigeeProduct.proxies = [...defaultProxies];
+      }
+    }
+
+    if (!apigeeProduct.apiResources || apigeeProduct.apiResources.length === 0) {
+      apigeeProduct.apiResources =
+        product.apiResources && product.apiResources.length > 0
+          ? [...product.apiResources]
+          : ["/", "/*", "/**"];
+    }
+
+    return apigeeProduct;
+  }
+
   public apigeeProductToProduct(apigeeProduct: any): Product {
     let product = new Product();
     product.name = apigeeProduct.name || "";
@@ -3649,7 +3696,8 @@ export class ApigeeConverter {
         res = res
           .replaceAll("{" + key + "}", val)
           .replaceAll("%" + key + "%", val)
-          .replaceAll("${" + key + "}", val);
+          .replaceAll("${" + key + "}", val)
+          .replaceAll("$" + key, val);
       }
       return res;
     };
@@ -3783,12 +3831,23 @@ export class ApigeeConverter {
 
   public userToApigeeDeveloper(user: User): any {
     const email = user.email || (user.name.includes("@") ? user.name : `${user.name}@example.com`);
+    let attributes: any[] = [];
+    if (user.attributes) {
+      if (Array.isArray(user.attributes)) {
+        attributes = user.attributes.map((a: any) => ({ name: a.name, value: a.value }));
+      } else if (typeof user.attributes === "object") {
+        attributes = Object.keys(user.attributes).map((k) => ({
+          name: k,
+          value: (user.attributes as any)[k],
+        }));
+      }
+    }
     return {
       email: email,
       userName: user.userName || user.name || email.split("@")[0],
       firstName: user.firstName || user.displayName?.split(" ")[0] || user.name || "Developer",
       lastName: user.lastName || user.displayName?.split(" ").slice(1).join(" ") || "User",
-      attributes: user.attributes || [],
+      attributes: attributes,
     };
   }
 
@@ -3809,6 +3868,71 @@ export class ApigeeConverter {
       if (app.credentials || app.keys) {
         appPayload.credentials = app.credentials || app.keys;
       }
+      apps.push(appPayload);
+    }
+    return apps;
+  }
+
+  public userToApigeeEmulatorApps(user: User): any[] {
+    let dev = this.userToApigeeDeveloper(user);
+    let apps: any[] = [];
+    for (let app of user.apps || []) {
+      let apiProducts = app.products || app.apiProducts || [];
+      let formattedCredentials: any[] = [];
+
+      let creds = app.credentials || app.keys || [];
+      if (creds && creds.length > 0) {
+        for (let c of creds) {
+          let credProducts = c.products || c.apiProducts || apiProducts;
+          let mappedCredProducts = credProducts.map((p: any) => {
+            if (typeof p === "object" && p && p.apiproduct) return p;
+            return {
+              apiproduct: typeof p === "string" ? p : p.name,
+              status: p.status || "approved",
+            };
+          });
+
+          formattedCredentials.push({
+            consumerKey: c.consumerKey || c.key || "",
+            consumerSecret: c.consumerSecret || c.secret || "",
+            apiProducts: mappedCredProducts,
+            status: c.status || "approved",
+          });
+        }
+      } else if (apiProducts.length > 0) {
+        formattedCredentials.push({
+          consumerKey: `${app.name}-key`,
+          consumerSecret: `${app.name}-secret`,
+          apiProducts: apiProducts.map((p: any) => ({
+            apiproduct: typeof p === "string" ? p : p.name,
+            status: "approved",
+          })),
+          status: "approved",
+        });
+      }
+
+      let attributes: any[] = [];
+      if (app.attributes) {
+        if (Array.isArray(app.attributes)) {
+          attributes = app.attributes.map((a: any) => ({ name: a.name, value: a.value }));
+        } else if (typeof app.attributes === "object") {
+          attributes = Object.keys(app.attributes).map((k) => ({
+            name: k,
+            value: (app.attributes as any)[k],
+          }));
+        }
+      }
+
+      let appPayload: any = {
+        name: app.name,
+        displayName: app.displayName || app.name,
+        developerEmail: dev.email,
+        callbackUrl: app.callbackUrl || "",
+        expiryType: (app as any).expiryType || "never",
+        apiProducts: apiProducts,
+        credentials: formattedCredentials,
+        attributes: attributes,
+      };
       apps.push(appPayload);
     }
     return apps;
@@ -3868,7 +3992,8 @@ export class ApigeeConverter {
         res = res
           .replaceAll("{" + key + "}", val)
           .replaceAll("%" + key + "%", val)
-          .replaceAll("${" + key + "}", val);
+          .replaceAll("${" + key + "}", val)
+          .replaceAll("$" + key, val);
       }
       return res;
     };
@@ -3942,6 +4067,155 @@ export class ApigeeConverter {
 
   public userToString(user: User): string {
     return this.userToStringArray(user).join("\n");
+  }
+
+  public kvmToApigeeEmulatorMap(kvm: Kvm, environment?: string): any {
+    const scope = kvm.type || "environment";
+    const mapEntry: any = {
+      name: kvm.name,
+      scope: scope,
+      entries: kvm.values || {},
+    };
+    if (scope === "proxy" && kvm.proxy) {
+      mapEntry.proxy = kvm.proxy;
+    }
+    if (environment) {
+      mapEntry.environment = environment;
+    }
+    return mapEntry;
+  }
+
+  public deploymentToStringArray(deployment: Deployment): string[] {
+    let result: string[] = [];
+    if (deployment.name) result.push(`Name: ${deployment.name}`);
+    if (deployment.displayName) result.push(`Display Name: ${deployment.displayName}`);
+    if (deployment.description) result.push(`Description: ${deployment.description}`);
+    if (deployment.environments && deployment.environments.length > 0)
+      result.push(`Environments: ${deployment.environments.join(", ")}`);
+    if (deployment.templates && deployment.templates.length > 0) {
+      const tNames = deployment.templates.map((t) => (typeof t === "string" ? t : t.name));
+      result.push(`Templates: ${tNames.join(", ")}`);
+    }
+    if (deployment.proxies && deployment.proxies.length > 0) {
+      const pNames = deployment.proxies.map((p) => (typeof p === "string" ? p : p.name));
+      result.push(`Proxies: ${pNames.join(", ")}`);
+    }
+    if (deployment.features && deployment.features.length > 0) {
+      const fNames = deployment.features.map((f) => (typeof f === "string" ? f : f.name));
+      result.push(`Features: ${fNames.join(", ")}`);
+    }
+    if (deployment.products && deployment.products.length > 0) {
+      const prodNames = deployment.products.map((p) => (typeof p === "string" ? p : p.name));
+      result.push(`Products: ${prodNames.join(", ")}`);
+    }
+    if (deployment.users && deployment.users.length > 0) {
+      const uNames = deployment.users.map((u) => (typeof u === "string" ? u : u.name || u.email));
+      result.push(`Users: ${uNames.join(", ")}`);
+    }
+    if (deployment.kvms && deployment.kvms.length > 0) {
+      const kNames = deployment.kvms.map((k) => k.name);
+      result.push(`KVMs: ${kNames.join(", ")}`);
+    }
+    if (deployment.parameters && deployment.parameters.length > 0) {
+      result.push(`Parameters: ${deployment.parameters.map((p) => p.name).join(", ")}`);
+    }
+    return result;
+  }
+
+  public deploymentToString(deployment: Deployment): string {
+    return this.deploymentToStringArray(deployment).join("\n");
+  }
+
+  public deploymentUpdateParameters(
+    deployment: Deployment,
+    parameters?: { [key: string]: string },
+  ) {
+    if (!parameters || Object.keys(parameters).length === 0) return;
+
+    const replaceStr = (str: string): string => {
+      let res = str;
+      for (const [k, v] of Object.entries(parameters)) {
+        res = res
+          .replaceAll("{" + k + "}", v)
+          .replaceAll("%" + k + "%", v)
+          .replaceAll("${" + k + "}", v)
+          .replaceAll("$" + k, v);
+      }
+      return res;
+    };
+
+    if (deployment.name) deployment.name = replaceStr(deployment.name);
+    if (deployment.displayName) deployment.displayName = replaceStr(deployment.displayName);
+    if (deployment.description) deployment.description = replaceStr(deployment.description);
+    if (deployment.environments) {
+      deployment.environments = deployment.environments.map(replaceStr);
+    }
+    if (deployment.templates) {
+      deployment.templates = deployment.templates.map((t) => {
+        if (typeof t === "string") return replaceStr(t);
+        if (t.name) t.name = replaceStr(t.name);
+        if (t.displayName) t.displayName = replaceStr(t.displayName);
+        if (t.description) t.description = replaceStr(t.description);
+        this.templateUpdateParameters(t, parameters);
+        return t;
+      });
+    }
+    if (deployment.proxies) {
+      deployment.proxies = deployment.proxies.map((p) => {
+        if (typeof p === "string") return replaceStr(p);
+        if (p.name) p.name = replaceStr(p.name);
+        if (p.displayName) p.displayName = replaceStr(p.displayName);
+        if (p.description) p.description = replaceStr(p.description);
+        this.proxyUpdateParameters(p, parameters);
+        return p;
+      });
+    }
+    if (deployment.features) {
+      deployment.features = deployment.features.map((f) => {
+        if (typeof f === "string") return replaceStr(f);
+        if (f.name) f.name = replaceStr(f.name);
+        if (f.displayName) f.displayName = replaceStr(f.displayName);
+        if (f.description) f.description = replaceStr(f.description);
+        this.featureUpdateParameters(f, parameters);
+        return f;
+      });
+    }
+    if (deployment.products) {
+      deployment.products = deployment.products.map((p) => {
+        if (typeof p === "string") return replaceStr(p);
+        this.productUpdateParameters(p, parameters);
+        return p;
+      });
+    }
+    if (deployment.users) {
+      deployment.users = deployment.users.map((u) => {
+        if (typeof u === "string") return replaceStr(u);
+        this.userUpdateParameters(u, parameters);
+        return u;
+      });
+    }
+    if (deployment.kvms) {
+      deployment.kvms = deployment.kvms.map((k) => {
+        if (k.name) k.name = replaceStr(k.name);
+        if (k.type) k.type = replaceStr(k.type);
+        if (k.proxy) k.proxy = replaceStr(k.proxy);
+        if (k.values) {
+          const updatedValues: { [key: string]: string } = {};
+          for (const [vKey, vVal] of Object.entries(k.values)) {
+            const updatedKey = replaceStr(vKey);
+            const updatedVal = typeof vVal === "string" ? replaceStr(vVal) : vVal;
+            updatedValues[updatedKey] = updatedVal;
+          }
+          k.values = updatedValues;
+        }
+        return k;
+      });
+    }
+  }
+
+  public deploymentReset(deployment: Deployment): Deployment {
+    const clone: Deployment = JSON.parse(JSON.stringify(deployment));
+    return clone;
   }
 }
 

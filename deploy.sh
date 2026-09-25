@@ -14,7 +14,7 @@ SERVICE_NAME="${SERVICE_NAME:-apigee-preflight}"
 GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-${GCLOUD_PROJECT}}"
 GOOGLE_CLOUD_LOCATION="${GOOGLE_CLOUD_LOCATION:-${REGION:-${GCLOUD_REGION:-us-central1}}}"
 BASE_IMAGE="osonly24"
-BINARY_NAME="aft-testpilot"
+BINARY_NAME="aft-preflight"
 BUILD_ONLY=false
 DEPLOY_ONLY=false
 
@@ -51,7 +51,7 @@ Options:
   -h, --help                Show this help message
 
 Environment Variables:
-  SERVICE_NAME              Cloud Run service name (default: aft-testpilot)
+  SERVICE_NAME              Cloud Run service name (default: aft-preflight)
   GOOGLE_CLOUD_PROJECT      GCP Project ID
   GOOGLE_CLOUD_LOCATION     GCP Region/Location (e.g. us-central1)
 
@@ -63,7 +63,7 @@ Examples:
   ./deploy.sh --build-only
 
   # Build and deploy to specific project and region:
-  ./deploy.sh -s aft-testpilot -p my-gcp-project -r us-central1
+  ./deploy.sh -s aft-preflight -p my-gcp-project -r us-central1
 EOF
   exit 0
 }

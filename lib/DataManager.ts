@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import * as YAML from "yaml";
 import type { Product, User, UserApp, UserCredential } from "./aft/interfaces";
-import { globalKvmStore } from "./policies/KeyValueMapOperations";
+import { globalKvmStore, DEFAULT_AI_CONFIG } from "./policies/KeyValueMapOperations";
+import { replaceEnvVariables } from "./DeploymentManager";
 
 export interface DeploymentTest {
   name: string;
@@ -81,6 +82,12 @@ export class DataManager {
       this.loadProducts();
       this.loadUsers();
       this.loadKvm();
+      if (globalKvmStore["AI-Config"]) {
+        globalKvmStore["AI-Config"] = {
+          ...DEFAULT_AI_CONFIG,
+          ...globalKvmStore["AI-Config"],
+        };
+      }
       this.loadTests();
       this.initialized = true;
 
@@ -106,7 +113,8 @@ export class DataManager {
         if (file.endsWith(".yaml") || file.endsWith(".yml") || file.endsWith(".json")) {
           try {
             const raw = fs.readFileSync(path.join(this.deploymentsDir, file), "utf8");
-            let doc = file.endsWith(".json") ? JSON.parse(raw) : (YAML.parse(raw) as any);
+            const substitutedRaw = replaceEnvVariables(raw);
+            let doc = file.endsWith(".json") ? JSON.parse(substitutedRaw) : (YAML.parse(substitutedRaw) as any);
             if (doc && doc.deployment) doc = doc.deployment;
             if (!doc) continue;
 

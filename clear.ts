@@ -2,13 +2,14 @@
 /**
  * clear.ts - Clean and Rebuild Utility for AFT-Preflight & Bungee Runtime
  *
- * Removes compiled proxy TypeScript files, removes ALL YAML files across data/
- * (including data/deployments/, data/proxies/, data/products/, data/users/,
- * data/kvm/, and data/templates/), and invokes build.ts to generate a clean index.ts.
+ * Removes compiled proxy TypeScript files, removes extracted data across data/
+ * (including data/proxies/, data/products/, data/users/, data/kvm/, data/templates/,
+ * data/tests/, and data/temp/), while leaving data/deployments/ untouched by default.
+ * Then invokes build.ts to generate a clean index.ts.
  *
  * Usage:
- *   bun run clear.ts                    # Default: Removes all YAMLs (including deployments) & proxies, then rebuilds
- *   bun run clear.ts --keep-deployments # Preserves data/deployments/ while cleaning extracted data and rebuilding
+ *   bun run clear.ts                      # Default: Preserves data/deployments/, removes generated files & rebuilds
+ *   bun run clear.ts --clean-deployments  # Optional: Also removes data/deployments/
  */
 
 import fs from "fs";
@@ -49,7 +50,8 @@ function removeFiles(dir: string, pattern?: RegExp): number {
 }
 
 export interface ClearOptions {
-  keepDeployments?: boolean;
+  keepDeployments?: boolean; // Defaults to true
+  cleanDeployments?: boolean;
   silent?: boolean;
 }
 
@@ -84,11 +86,13 @@ export async function clearAndRebuild(options: ClearOptions = {}): Promise<{ suc
     log(`   - Removed ${removedTemp} files from data/temp/`);
   }
 
-  if (!options.keepDeployments) {
+  // Preserves data/deployments/ by default unless explicitly asked to clean
+  const shouldCleanDeployments = options.cleanDeployments || options.keepDeployments === false;
+  if (shouldCleanDeployments) {
     const removedDeployments = removeFiles(DATA_DEPLOYMENTS_DIR, yamlRegex);
-    log(`   - Removed ${removedDeployments} YAMLs from data/deployments/ (default: all)`);
+    log(`   - Removed ${removedDeployments} YAMLs from data/deployments/ (--clean-deployments specified)`);
   } else {
-    log(`   - Preserving data/deployments/ (--keep-deployments specified)`);
+    log(`   - Preserving data/deployments/ (directory is not cleaned)`);
   }
 
   // 3. Invoke build.ts to re-generate clean index.ts
@@ -99,12 +103,14 @@ export async function clearAndRebuild(options: ClearOptions = {}): Promise<{ suc
 }
 
 if (import.meta.main) {
-  const keepDeployments =
-    process.argv.includes("--keep-deployments") ||
-    process.argv.includes("--preserve-deployments") ||
-    process.argv.includes("-k");
+  const cleanDeployments =
+    process.argv.includes("--clean-deployments") ||
+    process.argv.includes("--wipe-deployments") ||
+    process.argv.includes("--all");
 
-  clearAndRebuild({ keepDeployments })
+  const keepDeployments = !cleanDeployments;
+
+  clearAndRebuild({ keepDeployments, cleanDeployments })
     .then(() => process.exit(0))
     .catch((err) => {
       console.error("❌ [clear] Clean failed:", err);

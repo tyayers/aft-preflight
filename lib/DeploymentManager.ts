@@ -27,6 +27,57 @@ export interface DeploymentResult {
   timestamp: string;
 }
 
+/**
+ * Replaces any {var} placeholders with matching environment variables if set in process.env.
+ * If the environment variable is not set, leaves the placeholder untouched.
+ */
+export function replaceEnvVariables(content: string): string {
+  if (!content || typeof content !== "string") return content;
+  return content.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (match, varName) => {
+    // 1. Direct environment variable match: process.env[varName]
+    if (process.env[varName] !== undefined) {
+      return process.env[varName]!;
+    }
+    // 2. Upper snake case (e.g. {GoogleCloudProject} -> GOOGLE_CLOUD_PROJECT)
+    const snake = varName
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+      .toUpperCase();
+    if (process.env[snake] !== undefined) {
+      return process.env[snake]!;
+    }
+    // 3. Uppercase conversion
+    const upper = varName.toUpperCase();
+    if (process.env[upper] !== undefined) {
+      return process.env[upper]!;
+    }
+    // If not set, return match unchanged
+    return match;
+  });
+}
+
+/**
+ * Normalizes parameters array or object into a key-value dictionary
+ */
+export function extractParametersDict(rawParams: any): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!rawParams) return result;
+  if (Array.isArray(rawParams)) {
+    for (const p of rawParams) {
+      if (p && typeof p === "object" && p.name) {
+        const val = p.default ?? p.value ?? "";
+        result[p.name] = replaceEnvVariables(String(val));
+      }
+    }
+  } else if (typeof rawParams === "object") {
+    for (const [k, v] of Object.entries(rawParams)) {
+      const val = typeof v === "object" && v !== null ? (v as any).default ?? (v as any).value ?? "" : v ?? "";
+      result[k] = replaceEnvVariables(String(val));
+    }
+  }
+  return result;
+}
+
 export class DeploymentManager {
   private static lastResult: DeploymentResult | null = null;
 
@@ -78,11 +129,12 @@ export class DeploymentManager {
       try {
         const filePath = path.join(deploymentsDir, file);
         const raw = fs.readFileSync(filePath, "utf8");
-        let doc = file.endsWith(".json") ? JSON.parse(raw) : (YAML.parse(raw) as any);
+        const substitutedRaw = replaceEnvVariables(raw);
+        let doc = file.endsWith(".json") ? JSON.parse(substitutedRaw) : (YAML.parse(substitutedRaw) as any);
         if (doc && doc.deployment) doc = doc.deployment;
         if (!doc) continue;
 
-        const parameters = doc.parameters || {};
+        const parameters = extractParametersDict(doc.parameters);
         const proxiesToDeploy: { proxy: Proxy; source: "template" | "feature" | "proxy" }[] = [];
 
         // 1. Extract and save Products from deployment
@@ -294,7 +346,35 @@ export class DeploymentManager {
             ];
           }
 
-          const yamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
+          // Apply parameters and env vars to targets and endpoints
+          if (p.targets && Array.isArray(p.targets)) {
+            for (const t of p.targets) {
+              if (t && t.url) {
+                for (const [pk, pv] of Object.entries(parameters)) {
+                  if (pv && t.url.includes(`{${pk}}`)) {
+                    t.url = t.url.replaceAll(`{${pk}}`, pv);
+                  }
+                }
+                t.url = replaceEnvVariables(t.url);
+              }
+            }
+          }
+
+          if (p.endpoints && Array.isArray(p.endpoints)) {
+            for (const ep of p.endpoints) {
+              if (ep && ep.basePath) {
+                for (const [pk, pv] of Object.entries(parameters)) {
+                  if (pv && ep.basePath.includes(`{${pk}}`)) {
+                    ep.basePath = ep.basePath.replaceAll(`{${pk}}`, pv);
+                  }
+                }
+                ep.basePath = replaceEnvVariables(ep.basePath);
+              }
+            }
+          }
+
+          const rawYamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
+          const yamlStr = replaceEnvVariables(rawYamlStr);
           const targetFilePath = path.join(proxiesDir, `${proxyName}.yaml`);
           fs.writeFileSync(targetFilePath, yamlStr, "utf8");
 
@@ -324,7 +404,8 @@ export class DeploymentManager {
   ): Promise<DeploymentResult> {
     let doc: any = input;
     if (typeof input === "string") {
-      const trimmed = input.trim();
+      const substituted = replaceEnvVariables(input);
+      const trimmed = substituted.trim();
       if (trimmed.startsWith("{")) {
         doc = JSON.parse(trimmed);
       } else {
@@ -344,7 +425,7 @@ export class DeploymentManager {
     const deploymentName = doc.name || doc.id || `deployment-${Date.now()}`;
     const org = doc.organization || doc.org || options?.org || process.env.APIGEE_ORG || "";
     const drz = doc.drz || options?.drz || "";
-    const parameters = doc.parameters || {};
+    const parameters = extractParametersDict(doc.parameters);
 
     const aftService = new ApigeeTemplaterService();
     const converter = new ApigeeConverter();
@@ -668,8 +749,36 @@ export class DeploymentManager {
       // Collect base paths
       const basePaths = (p.endpoints || []).map((ep: any) => ep.basePath || `/${proxyName}`);
 
+      // Apply parameters and env vars to targets and endpoints
+      if (p.targets && Array.isArray(p.targets)) {
+        for (const t of p.targets) {
+          if (t && t.url) {
+            for (const [pk, pv] of Object.entries(parameters)) {
+              if (pv && t.url.includes(`{${pk}}`)) {
+                t.url = t.url.replaceAll(`{${pk}}`, pv);
+              }
+            }
+            t.url = replaceEnvVariables(t.url);
+          }
+        }
+      }
+
+      if (p.endpoints && Array.isArray(p.endpoints)) {
+        for (const ep of p.endpoints) {
+          if (ep && ep.basePath) {
+            for (const [pk, pv] of Object.entries(parameters)) {
+              if (pv && ep.basePath.includes(`{${pk}}`)) {
+                ep.basePath = ep.basePath.replaceAll(`{${pk}}`, pv);
+              }
+            }
+            ep.basePath = replaceEnvVariables(ep.basePath);
+          }
+        }
+      }
+
       // Serialize to YAML and save to ./data/proxies/{name}.yaml and ./data/templates/
-      const yamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
+      const rawYamlStr = YAML.stringify(p, { aliasDuplicateObjects: false });
+      const yamlStr = replaceEnvVariables(rawYamlStr);
       const targetFilePath = path.join(proxiesDir, `${proxyName}.yaml`);
       fs.writeFileSync(targetFilePath, yamlStr, "utf8");
 

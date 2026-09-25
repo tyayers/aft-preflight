@@ -5,15 +5,15 @@
 #
 # DESCRIPTION:
 #   This script wipes compiled TypeScript proxy classes from proxies/, removes
-#   ALL YAML files across data/ (including deployments, proxies, products, users,
-#   kvm, and templates), and runs `bun run build.ts` to rebuild a fresh, clean index.ts.
+#   extracted/generated data YAMLs across data/ (proxies, products, users, kvm,
+#   templates, tests, temp), while leaving the data/deployments/ directory intact.
+#   It then runs `bun run build.ts` to rebuild a clean index.ts.
 #
 # USAGE:
-#   ./clean.sh                 # Default: Full wipe of ALL data YAMLs (including deployments)
-#                              # and compiled proxies, followed by rebuilding a clean index.ts.
+#   ./clean.sh                 # Default: Preserves data/deployments/ while cleaning
+#                              # extracted YAMLs & compiled proxies, then rebuilds.
 #
-#   ./clean.sh --keep-deployments  # Preserves data/deployments/ while cleaning extracted
-#                                  # YAMLs & compiled proxies, then rebuilds from deployments.
+#   ./clean.sh --clean-deployments # Optional: Also wipes data/deployments/
 #
 #   ./clean.sh --help          # Displays this documentation.
 #
@@ -23,7 +23,6 @@
 # EXAMPLES:
 #   chmod +x clean.sh
 #   ./clean.sh
-#   ./clean.sh --keep-deployments
 # ==============================================================================
 
 set -e
@@ -33,20 +32,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-  sed -n '2,24p' "$0" | sed 's/^# \?//'
+  sed -n '2,25p' "$0" | sed 's/^# \?//'
   exit 0
-fi
-
-KEEP_DEPLOYMENTS=false
-if [[ "$1" == "--keep-deployments" || "$1" == "--preserve-deployments" || "$1" == "-k" ]]; then
-  KEEP_DEPLOYMENTS=true
 fi
 
 echo "=================================================="
 echo "🧹  AFT-Preflight & Bungee Runtime Cleaner & Rebuilder"
 echo "=================================================="
 
-# Delegate to clear.ts
+# Delegate to clear.ts (which preserves data/deployments/ by default)
 bun run clear.ts "$@"
 
 echo ""

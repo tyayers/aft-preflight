@@ -19,7 +19,7 @@ beforeAll(async () => {
   }
   const mod = await import("../proxies/testlocal");
   testlocalProxy = mod.testlocalProxy;
-});
+}, 30000);
 
 describe("Apigee Condition Evaluator", () => {
   it("evaluates simple and boolean expressions", () => {

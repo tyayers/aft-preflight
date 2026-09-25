@@ -8,7 +8,6 @@ import { runBuild } from "./build";
 import { AnalyticsManager } from "./lib/analytics";
 import { REST_AI_EmbeddingsProxy } from "./proxies/REST-AI-Embeddings";
 import { REST_AI_MessagesProxy } from "./proxies/REST-AI-Messages";
-import { TestProxyProxy } from "./proxies/TestProxy";
 import { REST_AI_InteractionsProxy } from "./proxies/REST-AI-Interactions";
 import { REST_AI_GenerateContentProxy } from "./proxies/REST-AI-GenerateContent";
 import { REST_AI_CompletionsProxy } from "./proxies/REST-AI-Completions";
@@ -80,8 +79,6 @@ function startBungeeServer(portNum: number) {
     "/v1/embeddings": REST_AI_EmbeddingsProxy,
     "/v1/messages/*": REST_AI_MessagesProxy,
     "/v1/messages": REST_AI_MessagesProxy,
-    "/testproxy/*": TestProxyProxy,
-    "/testproxy": TestProxyProxy,
     "/v1beta/interactions/*": REST_AI_InteractionsProxy,
     "/v1beta/interactions": REST_AI_InteractionsProxy,
     "/v1/projects/*": REST_AI_GenerateContentProxy,

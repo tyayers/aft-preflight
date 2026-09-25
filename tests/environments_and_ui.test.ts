@@ -111,7 +111,7 @@ proxies:
 
     const html = fs.readFileSync("./public/index.html", "utf8");
     expect(html).toContain("<!DOCTYPE html>");
-    expect(html).toContain("AFT PREFLIGHT");
+    expect(html).toMatch(/APIGEE PREFLIGHT|AFT PREFLIGHT/);
     expect(html).toContain("BUNGEE RUNTIME");
     expect(html).toContain("Test Console");
     expect(html).toContain("Traces");

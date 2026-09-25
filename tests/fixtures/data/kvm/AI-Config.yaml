@@ -1,0 +1,4 @@
+FailoverModel: "google/gemini-3.7-flash"
+PriceList: '{"default":{"requestPerMillionTokens":1,"responsePerMillionTokens":3},"google/gemini-3.7-flash":{"requestPerMillionTokens":0.15,"responsePerMillionTokens":0.6},"google/gemini-3.5-flash-lite":{"requestPerMillionTokens":0.075,"responsePerMillionTokens":0.3}}'
+GroupsLookup: "{}"
+Groups: "[]"

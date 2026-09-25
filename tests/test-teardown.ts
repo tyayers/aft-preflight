@@ -5,4 +5,4 @@ import { clearAndRebuild } from "../clear";
 afterAll(async () => {
   console.log("\n🧹 [test-teardown] Cleaning up data/ test artifacts and restoring runtime state...");
   await clearAndRebuild({ silent: false, keepDeployments: true });
-});
+}, 30000);

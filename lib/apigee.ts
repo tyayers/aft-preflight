@@ -565,7 +565,21 @@ export class ApigeeContext {
   resolveVariables(template: string, ignoreUnresolved: boolean = true): string {
     if (typeof template !== "string") return String(template ?? "");
     return template.replace(/\{([^{}]+)\}/g, (match, varName) => {
-      const val = this.getVariable(varName.trim());
+      const trimmed = varName.trim();
+      let val = this.getVariable(trimmed);
+      if (val === undefined || val === null) {
+        if (process.env[trimmed] !== undefined) {
+          val = process.env[trimmed];
+        } else {
+          const snake = trimmed
+            .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+            .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+            .toUpperCase();
+          if (process.env[snake] !== undefined) {
+            val = process.env[snake];
+          }
+        }
+      }
       if (val !== undefined && val !== null) {
         if (ArrayBuffer.isView(val) || val instanceof ArrayBuffer) {
           return "[binary data]";

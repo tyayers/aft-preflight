@@ -35,5 +35,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 bun
 bungee-service
 aft-preflight
-data
+data/kvm
+data/products
+data/proxies
+data/templates
+data/tests
+data/users
 proxies

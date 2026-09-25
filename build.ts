@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
-import { DeploymentManager } from "./lib/DeploymentManager";
+import { DeploymentManager, replaceEnvVariables } from "./lib/DeploymentManager";
+
+export { replaceEnvVariables };
 
 const PROXIES_DIR = path.resolve(process.cwd(), "proxies");
 const DATA_PROXIES_DIR = path.resolve(process.cwd(), "data/proxies");
@@ -493,7 +495,8 @@ async function executeBuild(options?: BuildOptions): Promise<{ success: boolean;
     const templateFile = src.file;
     const templateBaseName = path.basename(templateFile, path.extname(templateFile));
     const content = fs.readFileSync(path.join(src.dir, templateFile), "utf8");
-    const data = yaml.load(content) as any;
+    const substitutedContent = replaceEnvVariables(content);
+    const data = yaml.load(substitutedContent) as any;
 
     if (!data) continue;
 

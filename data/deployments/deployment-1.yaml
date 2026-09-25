@@ -1,0 +1,208 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/apigee/apigee-templater/main/schema/gateway.schema.1.0.json
+gateway: apigee
+schemaVersion: 1.0.0
+name: deployment-1
+type: deployment
+parameters:
+  - name: GoogleCloudProject
+    default: "{GOOGLE_CLOUD_PROJECT}"
+templates:
+  - REST-AI-Interactions
+  - REST-AI-GenerateContent
+  - REST-AI-Messages
+  - REST-AI-Completions
+  - REST-AI-Embeddings
+proxies: []
+products:
+- name: test-product
+  displayName: Test Product
+  type: product
+  gateway: apigee
+  schemaVersion: 1.0.0
+  description: Test Product
+  access: public
+  approvalType: auto
+  environments:
+    - default-dev
+    - test
+  proxies:
+    - TestProxy
+    - REST-AI-Completions
+    - REST-AI-Interactions
+    - REST-AI-GenerateContent
+    - REST-AI-Messages
+  apiResources: []
+  quota: "50000"
+  quotaInterval: "1"
+  quotaTimeUnit: month
+  scopes: []
+  operations: []
+  llmOperations:
+    - apiSource: REST-AI-Completions
+      operations:
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.8-flash
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.5-flash-lite
+    - apiSource: REST-AI-Interactions
+      operations:
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.8-flash
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.5-flash-lite
+    - apiSource: REST-AI-GenerateContent
+      operations:
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.8-flash
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.5-flash-lite
+    - apiSource: REST-AI-Messages
+      operations:
+        - name: /
+          methods:
+            - POST
+          model: claude-sonnet-5
+        - name: /
+          methods:
+            - POST
+          model: gemini-3.5-flash-lite
+  payloadOperations: []
+  graphqlOperations: []
+  grpcOperations: []
+kvms:
+  - name: AI-Config
+    type: environment
+    values:
+      GeminiApiKey: "{GEMINI_API_KEY}"
+users:
+- name: test@example.com
+  displayName: ""
+  type: user
+  gateway: apigee
+  schemaVersion: 1.0.0
+  email: test@example.com
+  firstName: Test
+  lastName: User
+  userName: test@example.com
+  status: active
+  attributes: []
+  apps:
+    - name: Test App
+      displayName: Test App
+      description: ""
+      callbackUrl: ""
+      status: approved
+      products:
+        - test-product
+      scopes: []
+      attributes: []
+      credentials:
+        - consumerKey: test-app-key-123
+          consumerSecret: test-app-secret-123
+          status: approved
+          issuedAt: "1788775511054"
+          expiresAt: "-1"
+          products:
+            - test-product
+          scopes: []
+          attributes: []
+tests:
+  - name: interactions-test1
+    description: Tests the Gemini Interactions API
+    proxy: REST-AI-Interactions
+    path: /v1beta/interactions
+    method: POST
+    headers:
+      x-api-key: test-app-key-123
+    body: |
+      {
+        "model": "gemini-3.5-flash-lite",
+        "input": "What is the capital of France?"
+      }
+    assertions:
+      - response.status == 200
+  - name: completions-test1
+    description: This tests the completions API.
+    proxy: REST-AI-Completions
+    path: /v1/chat/completions
+    method: POST
+    headers:
+      x-api-key: test-app-key-123
+    body: |
+      {
+        "model": "google/gemini-3.5-flash-lite",
+        "stream": true,
+        "max_tokens": 100,
+        "messages": [{
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }]
+      }
+    assertions:
+      - response.status == 200
+  - name: generatecontent-test1
+    description: This tests the GenerateContent API.
+    proxy: REST-AI-GenerateContent
+    path: /v1/projects/{GOOGLE_CLOUD_PROJECT}/locations/global/publishers/google/models/gemini-3.5-flash-lite:generateContent
+    method: POST
+    headers:
+      x-api-key: test-app-key-123
+    body: |
+      {
+        "contents": [
+          {
+            "role": "USER",
+            "parts": [
+              {
+                "text": "why is the sky blue?"
+              }
+            ]
+          }
+        ]
+      }
+    assertions:
+      - response.status == 200
+  - name: messages-test1
+    description: This tests the Messages API.
+    proxy: REST-AI-Messages
+    path: /v1/messages
+    method: POST
+    headers:
+      x-api-key: test-app-key-123
+    body: |
+      {
+        "model": "google/gemini-3.5-flash-lite",
+        "stream": true,
+        "max_tokens": 100,
+        "messages": [{
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }]
+      }
+    assertions:
+      - response.status == 200
+  - name: embeddings-test1
+    description: This tests the Embeddings API.
+    proxy: REST-AI-Embeddings
+    path: /v1/embeddings
+    method: POST
+    headers: {}
+    body: |
+      {
+        "model": "google/gemini-embedding-2",
+        "input": "This is a test sentence to embed."
+      }
+    assertions:
+      - response.status == 200

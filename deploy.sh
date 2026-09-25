@@ -17,6 +17,7 @@ BASE_IMAGE="osonly24"
 BINARY_NAME="aft-preflight"
 BUILD_ONLY=false
 DEPLOY_ONLY=false
+PARAMETERS="${PARAMETERS:-}"
 
 # ------------------------------------------------------------------------------
 # Color output helpers
@@ -46,6 +47,7 @@ Options:
   -s, --service <name>      Cloud Run service name (default: ${SERVICE_NAME})
   -p, --project <project>   GCP Project ID (default: ${GOOGLE_CLOUD_PROJECT:-<unset>})
   -r, --region <region>     Cloud Run region (default: ${GOOGLE_CLOUD_LOCATION})
+  --parameters <params>     Environment variables/parameters for deployment (e.g. "KEY1=val1,KEY2=val2")
   -b, --build-only          Compile Linux binary only, skip Cloud Run deployment
   -d, --deploy-only         Deploy existing binary only, skip compilation step
   -h, --help                Show this help message
@@ -54,6 +56,7 @@ Environment Variables:
   SERVICE_NAME              Cloud Run service name (default: aft-preflight)
   GOOGLE_CLOUD_PROJECT      GCP Project ID
   GOOGLE_CLOUD_LOCATION     GCP Region/Location (e.g. us-central1)
+  PARAMETERS                Runtime parameters / environment variables
 
 Examples:
   # Build and deploy with default service name:
@@ -62,8 +65,11 @@ Examples:
   # Build standalone Linux binary only:
   ./deploy.sh --build-only
 
+  # Deploy with runtime environment parameters:
+  ./deploy.sh --parameters "GEMINI_API_KEY=fdj23432,var2=val2"
+
   # Build and deploy to specific project and region:
-  ./deploy.sh -s aft-preflight -p my-gcp-project -r us-central1
+  ./deploy.sh -s aft-preflight -p my-gcp-project -r us-central1 --parameters "GEMINI_API_KEY=fdj23432,var2=val2"
 EOF
   exit 0
 }
@@ -85,6 +91,14 @@ while [[ $# -gt 0 ]]; do
       GOOGLE_CLOUD_LOCATION="$2"
       shift 2
       ;;
+    --parameters|--parameter)
+      PARAMETERS="$2"
+      shift 2
+      ;;
+    --parameters=*|--parameter=*)
+      PARAMETERS="${1#*=}"
+      shift
+      ;;
     -b|--build-only)
       BUILD_ONLY=true
       shift
@@ -102,6 +116,16 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Export passed parameters into current shell environment if provided
+if [ -n "${PARAMETERS}" ]; then
+  IFS=',' read -ra PARAM_PAIRS <<< "$PARAMETERS"
+  for pair in "${PARAM_PAIRS[@]}"; do
+    if [[ "$pair" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      export "$pair"
+    fi
+  done
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -162,12 +186,21 @@ if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
   exit 1
 fi
 
+ENV_VARS="GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}"
+if [ -n "${PARAMETERS}" ]; then
+  ENV_VARS="${ENV_VARS},${PARAMETERS}"
+fi
+
 log_info "Deploying to Cloud Run with configuration:"
 echo "  Service Name:  ${SERVICE_NAME}"
 echo "  Base Image:    ${BASE_IMAGE}"
 echo "  Command:       ./${BINARY_NAME}"
 echo "  Project:       ${GOOGLE_CLOUD_PROJECT}"
 echo "  Region:        ${GOOGLE_CLOUD_LOCATION}"
+if [ -n "${PARAMETERS}" ]; then
+  echo "  Parameters:    ${PARAMETERS}"
+fi
+echo "  Env Vars:      ${ENV_VARS}"
 echo "  Auth:          --allow-unauthenticated"
 
 log_info "Running gcloud command:"
@@ -179,6 +212,7 @@ gcloud beta run deploy ${SERVICE_NAME} \\
   --command=./${BINARY_NAME} \\
   --project ${GOOGLE_CLOUD_PROJECT} \\
   --region ${GOOGLE_CLOUD_LOCATION} \\
+  --set-env-vars "${ENV_VARS}" \\
   --allow-unauthenticated
 CMD
 
@@ -189,7 +223,7 @@ gcloud beta run deploy "${SERVICE_NAME}" \
   --command="./${BINARY_NAME}" \
   --project "${GOOGLE_CLOUD_PROJECT}" \
   --region "${GOOGLE_CLOUD_LOCATION}" \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT" \
+  --set-env-vars "${ENV_VARS}" \
   --allow-unauthenticated
 
 log_succ "Deployment of ${SERVICE_NAME} completed successfully!"
